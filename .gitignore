@@ -17,12 +17,22 @@ node_modules/
 .playwright-mcp/
 *.log
 **/.novel/
+**/checkpoints/
+**/revisions/
+**/backups/
+**/logs/
+*.db
+*.db-shm
+*.db-wal
 
 # Generated build and packaging output
 out/
 release/
 dist/
 .electron-cache/
+coverage/
+.vite/
+*.tsbuildinfo
 
 # Temporary files
 *.tmp
