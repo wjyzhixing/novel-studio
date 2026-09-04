@@ -1,0 +1,16 @@
+relations:
+  - id: rel_lin_compass
+    fromId: ent_lin_yue
+    relationType: 持有
+    toId: ent_tide_compass
+    metadata: {origin: 母亲遗物}
+  - id: rel_he_guardian
+    fromId: ent_he_zhi
+    relationType: 守护
+    toId: ent_tide_lighthouse
+    metadata: {duration: 四十年}
+  - id: rel_archive_under_harbor
+    fromId: ent_star_archive
+    relationType: 位于
+    toId: ent_mist_harbor
+    metadata: {access: 潮汐最低时}

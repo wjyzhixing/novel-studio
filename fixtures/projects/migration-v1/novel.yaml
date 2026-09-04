@@ -1,0 +1,8 @@
+projectId: proj_fixture_migration-v1
+title: Migration v1
+language: zh-CN
+createdAt: 2026-09-04T04:01:08.776Z
+schemaVersion: 1
+defaultWorkflow: flow_builtin_novel
+artDirection: ''
+providerProfile: null

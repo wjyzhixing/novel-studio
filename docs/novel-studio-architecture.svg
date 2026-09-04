@@ -1,0 +1,215 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" width="1600" height="1200">
+<style>text{font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif} .hand{stroke-linecap:round;stroke-linejoin:round}</style>
+<defs>
+<marker id="arrow-yellow" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#f5d76e"/></marker>
+<marker id="arrow-blue" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#65a8ff"/></marker>
+<marker id="arrow-green" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#68d391"/></marker>
+<marker id="arrow-purple" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 Z" fill="#c59cff"/></marker>
+</defs>
+<rect width="1600" height="1200" fill="#0b0e14"/>
+<text x="58" y="58" font-size="30" fill="#fff7c7" font-weight="700" text-anchor="start">Novel Studio</text>
+<text x="58" y="88" font-size="14" fill="#aaa99e" font-weight="400" text-anchor="start">Electron + React + TypeScript · Local-first AI-native novel writing IDE</text>
+<rect x="1280" y="38" width="252" height="24" rx="12" fill="#f5d76e" fill-opacity=".13" stroke="#f5d76e" stroke-width="1"/>
+<text x="1406.0" y="55" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">SYSTEM ARCHITECTURE</text>
+<rect x="34" y="112" width="1532" height="190" rx="16" fill="#12151c" stroke="#30343e" stroke-width="1"/>
+<text x="58" y="139" font-size="12" fill="#938d78" font-weight="600" text-anchor="start">01 · 用户与 RENDERER 工作台</text>
+<rect x="70" y="150" width="210" height="105" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="70" y="150" width="5" height="105" rx="2" fill="#f5d76e"/>
+<text x="88" y="179" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">作者 / OS</text>
+<text x="88" y="203" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">文件选择 · 快捷键</text>
+<rect x="330" y="140" width="300" height="125" rx="12" fill="#171a22" stroke="#65a8ff" stroke-width="2"/>
+<rect x="330" y="140" width="5" height="125" rx="2" fill="#65a8ff"/>
+<text x="348" y="169" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">React App Shell</text>
+<text x="348" y="193" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">App.tsx · Zustand AppStore</text>
+<rect x="680" y="140" width="260" height="125" rx="12" fill="#171a22" stroke="#65a8ff" stroke-width="2"/>
+<rect x="680" y="140" width="5" height="125" rx="2" fill="#65a8ff"/>
+<text x="698" y="169" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Writer Workbench</text>
+<text x="698" y="193" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Sidebar · Editor · RightPanel</text>
+<rect x="990" y="140" width="250" height="125" rx="12" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<rect x="990" y="140" width="5" height="125" rx="2" fill="#c59cff"/>
+<text x="1008" y="169" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Story Bible</text>
+<text x="1008" y="193" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Entity · Timeline · Artifacts</text>
+<rect x="1290" y="140" width="220" height="125" rx="12" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<rect x="1290" y="140" width="5" height="125" rx="2" fill="#c59cff"/>
+<text x="1308" y="169" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Studio Tools</text>
+<text x="1308" y="193" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Workflow · Graph · Image</text>
+<path d="M280,200 L330,200" fill="none" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<rect x="270.0" y="184.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="305.0" y="200.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">操作</text>
+<path d="M630,200 L680,200" fill="none" stroke="#65a8ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="620.0" y="184.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="655.0" y="200.0" font-size="11" fill="#65a8ff" font-weight="600" text-anchor="middle">状态</text>
+<path d="M940,200 L990,200" fill="none" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="930.0" y="184.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="965.0" y="200.0" font-size="11" fill="#c59cff" font-weight="600" text-anchor="middle">导航</text>
+<path d="M1240,200 L1290,200" fill="none" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="1230.0" y="184.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1265.0" y="200.0" font-size="11" fill="#c59cff" font-weight="600" text-anchor="middle">工作区</text>
+<rect x="34" y="322" width="1532" height="135" rx="16" fill="#12151c" stroke="#30343e" stroke-width="1"/>
+<text x="58" y="349" font-size="12" fill="#938d78" font-weight="600" text-anchor="start">02 · 安全边界与 TYPED IPC</text>
+<rect x="100" y="355" width="330" height="76" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="100" y="355" width="5" height="76" rx="2" fill="#f5d76e"/>
+<text x="118" y="384" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Preload contextBridge</text>
+<text x="118" y="408" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">白名单 API · 无 Node 暴露</text>
+<rect x="510" y="355" width="330" height="76" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="510" y="355" width="5" height="76" rx="2" fill="#f5d76e"/>
+<text x="528" y="384" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">IPC Contract</text>
+<text x="528" y="408" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">shared/ipc.ts · shared schemas</text>
+<rect x="920" y="355" width="550" height="76" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="920" y="355" width="5" height="76" rx="2" fill="#f5d76e"/>
+<text x="938" y="384" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Main IPC Router + Zod</text>
+<text x="938" y="408" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">参数校验 · Result&lt;T, AppError&gt; · 敏感错误脱敏</text>
+<path d="M480,393 L510,393" fill="none" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<rect x="454.0" y="377.0" width="82" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="495.0" y="393.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">invoke</text>
+<path d="M860,393 L920,393" fill="none" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<rect x="838.0" y="377.0" width="104" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="890.0" y="393.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">validate</text>
+<path d="M795,265 L270,355" fill="none" stroke="#65a8ff" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-blue)"/>
+<rect x="460.0" y="284" width="170" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="545" y="300" font-size="11" fill="#65a8ff" font-weight="600" text-anchor="middle">renderer calls</text>
+<rect x="34" y="490" width="1532" height="320" rx="16" fill="#12151c" stroke="#30343e" stroke-width="1"/>
+<text x="58" y="517" font-size="12" fill="#938d78" font-weight="600" text-anchor="start">03 · MAIN DOMAIN SERVICES</text>
+<rect x="70" y="535" width="220" height="100" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="70" y="535" width="5" height="100" rx="2" fill="#f5d76e"/>
+<text x="88" y="564" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">ProjectService</text>
+<text x="88" y="588" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">项目生命周期 · manifest</text>
+<rect x="330" y="535" width="220" height="100" rx="12" fill="#171a22" stroke="#65a8ff" stroke-width="2"/>
+<rect x="330" y="535" width="5" height="100" rx="2" fill="#65a8ff"/>
+<text x="348" y="564" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">ChapterService</text>
+<text x="348" y="588" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Markdown · autosave · FTS</text>
+<rect x="590" y="535" width="220" height="100" rx="12" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<rect x="590" y="535" width="5" height="100" rx="2" fill="#c59cff"/>
+<text x="608" y="564" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">StoryService</text>
+<text x="608" y="588" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Entity · Timeline · Artifact</text>
+<rect x="850" y="535" width="220" height="100" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="850" y="535" width="5" height="100" rx="2" fill="#f5d76e"/>
+<text x="868" y="564" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">AiService</text>
+<text x="868" y="588" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Provider · Secret · Chat</text>
+<rect x="1110" y="535" width="220" height="100" rx="12" fill="#171a22" stroke="#68d391" stroke-width="2"/>
+<rect x="1110" y="535" width="5" height="100" rx="2" fill="#68d391"/>
+<text x="1128" y="564" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Context / Memory</text>
+<text x="1128" y="588" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">RAG · Canon · Embeddings</text>
+<rect x="1370" y="535" width="160" height="100" rx="12" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<rect x="1370" y="535" width="5" height="100" rx="2" fill="#c59cff"/>
+<text x="1388" y="564" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Workflow Runtime</text>
+<text x="1388" y="588" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">DAG · queue · retry</text>
+<path d="M180,431 L180,535" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="162.5" y="474" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="198" y="490" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">route</text>
+<path d="M440,431 L440,535" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="422.5" y="474" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="458" y="490" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">route</text>
+<path d="M700,431 L700,535" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="682.5" y="474" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="718" y="490" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">route</text>
+<path d="M960,431 L960,535" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="942.5" y="474" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="978" y="490" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">route</text>
+<path d="M1200,431 L1200,535" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="1182.5" y="474" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1218" y="490" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">route</text>
+<path d="M1450,431 L1450,535" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="1432.5" y="474" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1468" y="490" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">route</text>
+<path d="M810,585 L850,585" fill="none" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<rect x="795.0" y="569.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="830.0" y="585.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">AI</text>
+<path d="M1070,585 L1110,585" fill="none" stroke="#68d391" stroke-width="2" marker-end="url(#arrow-green)"/>
+<rect x="1043.5" y="569.0" width="93" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1090.0" y="585.0" font-size="11" fill="#68d391" font-weight="600" text-anchor="middle">context</text>
+<path d="M1330,585 L1370,585" fill="none" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="1315.0" y="569.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1350.0" y="585.0" font-size="11" fill="#c59cff" font-weight="600" text-anchor="middle">run</text>
+<rect x="34" y="680" width="1532" height="305" rx="16" fill="#12151c" stroke="#30343e" stroke-width="1"/>
+<text x="58" y="707" font-size="12" fill="#938d78" font-weight="600" text-anchor="start">04 · 内容源、索引、状态与外部 PROVIDER</text>
+<rect x="70" y="745" width="250" height="105" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="70" y="745" width="5" height="105" rx="2" fill="#f5d76e"/>
+<text x="88" y="774" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Open Format 内容源</text>
+<text x="88" y="798" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">chapters/*.md · story/*.yaml · assets/*</text>
+<path d="M390,747 C390,731 635,731 635,747 L635,848 C635,864 390,864 390,848 Z" fill="#171a22" stroke="#68d391" stroke-width="2"/>
+<path d="M390,747 C390,763 635,763 635,747" fill="none" stroke="#68d391" stroke-width="1.4" opacity=".7"/>
+<path d="M390,848 C390,864 635,864 635,848" fill="none" stroke="#68d391" stroke-width="1.4" opacity=".7"/>
+<text x="512.5" y="783" font-size="15" fill="#e9f9ed" font-weight="600" text-anchor="middle">SQLite</text>
+<text x="512.5" y="805" font-size="11" fill="#91b79d" font-weight="400" text-anchor="middle">索引 · 状态 · 审计 · jobs</text>
+<path d="M705,747 C705,731 950,731 950,747 L950,848 C950,864 705,864 705,848 Z" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<path d="M705,747 C705,763 950,763 950,747" fill="none" stroke="#c59cff" stroke-width="1.4" opacity=".7"/>
+<path d="M705,848 C705,864 950,864 950,848" fill="none" stroke="#c59cff" stroke-width="1.4" opacity=".7"/>
+<text x="827.5" y="783" font-size="15" fill="#e9f9ed" font-weight="600" text-anchor="middle">Embeddings SQLite</text>
+<text x="827.5" y="805" font-size="11" fill="#91b79d" font-weight="400" text-anchor="middle">vector_json · model · hash</text>
+<rect x="1020" y="745" width="235" height="105" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="1020" y="745" width="5" height="105" rx="2" fill="#f5d76e"/>
+<text x="1038" y="774" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">SecretStore</text>
+<text x="1038" y="798" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">safeStorage · provider-secrets</text>
+<rect x="1325" y="745" width="205" height="105" rx="12" fill="#171a22" stroke="#65a8ff" stroke-width="2" stroke-dasharray="8 6"/>
+<rect x="1325" y="745" width="5" height="105" rx="2" fill="#65a8ff"/>
+<text x="1343" y="774" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">LLM / Image APIs</text>
+<text x="1343" y="798" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">OpenAI · Anthropic · Gemini</text>
+<path d="M180,635 L180,745" fill="none" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<rect x="117.0" y="674.0" width="126" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="180.0" y="690.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">read/write</text>
+<path d="M440,635 L500,735" fill="none" stroke="#65a8ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="434.5" y="669.0" width="71" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="470.0" y="685.0" font-size="11" fill="#65a8ff" font-weight="600" text-anchor="middle">index</text>
+<path d="M700,635 L515,735" fill="none" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="544.5" y="669.0" width="126" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="607.5" y="685.0" font-size="11" fill="#c59cff" font-weight="600" text-anchor="middle">story data</text>
+<path d="M960,635 L1135,745" fill="none" stroke="#f5d76e" stroke-width="2" stroke-dasharray="7 5" marker-end="url(#arrow-yellow)"/>
+<rect x="1012.5" y="674.0" width="70" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1047.5" y="690.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">keys</text>
+<path d="M1200,635 L825,735" fill="none" stroke="#68d391" stroke-width="2" marker-end="url(#arrow-green)"/>
+<rect x="949.5" y="669.0" width="126" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1012.5" y="685.0" font-size="11" fill="#68d391" font-weight="600" text-anchor="middle">read/write</text>
+<path d="M1200,635 L1425,745" fill="none" stroke="#65a8ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="1266.0" y="674.0" width="93" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1312.5" y="690.0" font-size="11" fill="#65a8ff" font-weight="600" text-anchor="middle">request</text>
+<path d="M1450,635 L1425,745" fill="none" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="1391.0" y="674.0" width="93" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1437.5" y="690.0" font-size="11" fill="#c59cff" font-weight="600" text-anchor="middle">execute</text>
+<rect x="34" y="1008" width="1532" height="135" rx="16" fill="#12151c" stroke="#30343e" stroke-width="1"/>
+<text x="58" y="1035" font-size="12" fill="#938d78" font-weight="600" text-anchor="start">05 · 关键闭环（跨层数据流）</text>
+<rect x="70" y="1050" width="250" height="64" rx="12" fill="#171a22" stroke="#65a8ff" stroke-width="2"/>
+<rect x="70" y="1050" width="5" height="64" rx="2" fill="#65a8ff"/>
+<text x="88" y="1079" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">写作与 AI Edit</text>
+<text x="88" y="1103" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Chapter → Context → AI → Diff</text>
+<rect x="390" y="1050" width="250" height="64" rx="12" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<rect x="390" y="1050" width="5" height="64" rx="2" fill="#c59cff"/>
+<text x="408" y="1079" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">检索与 Embedding</text>
+<text x="408" y="1103" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Markdown hash → embed → cosine / FTS fallback</text>
+<rect x="710" y="1050" width="250" height="64" rx="12" fill="#171a22" stroke="#68d391" stroke-width="2"/>
+<rect x="710" y="1050" width="5" height="64" rx="2" fill="#68d391"/>
+<text x="728" y="1079" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Canon 人工审核</text>
+<text x="728" y="1103" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Memory Extract → Proposal → Apply / Revert</text>
+<rect x="1030" y="1050" width="250" height="64" rx="12" fill="#171a22" stroke="#c59cff" stroke-width="2"/>
+<rect x="1030" y="1050" width="5" height="64" rx="2" fill="#c59cff"/>
+<text x="1048" y="1079" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">Workflow Runtime</text>
+<text x="1048" y="1103" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">DAG → parallel → pause/resume → retry</text>
+<rect x="1350" y="1050" width="180" height="64" rx="12" fill="#171a22" stroke="#f5d76e" stroke-width="2"/>
+<rect x="1350" y="1050" width="5" height="64" rx="2" fill="#f5d76e"/>
+<text x="1368" y="1079" font-size="16" fill="#fff7c7" font-weight="600" text-anchor="start">可回退</text>
+<text x="1368" y="1103" font-size="12" fill="#aaa99e" font-weight="400" text-anchor="start">Revision · Checkpoint</text>
+<path d="M320,1082 L390,1082" fill="none" stroke="#65a8ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<rect x="308.5" y="1066.0" width="93" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="355.0" y="1082.0" font-size="11" fill="#65a8ff" font-weight="600" text-anchor="middle">context</text>
+<path d="M640,1082 L710,1082" fill="none" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<rect x="623.0" y="1066.0" width="104" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="675.0" y="1082.0" font-size="11" fill="#c59cff" font-weight="600" text-anchor="middle">proposal</text>
+<path d="M960,1082 L1030,1082" fill="none" stroke="#68d391" stroke-width="2" marker-end="url(#arrow-green)"/>
+<rect x="943.0" y="1066.0" width="104" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="995.0" y="1082.0" font-size="11" fill="#68d391" font-weight="600" text-anchor="middle">workflow</text>
+<path d="M1280,1082 L1350,1082" fill="none" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<rect x="1263.0" y="1066.0" width="104" height="22" rx="5" fill="#101219" opacity=".96"/>
+<text x="1315.0" y="1082.0" font-size="11" fill="#f5d76e" font-weight="600" text-anchor="middle">revision</text>
+<g transform="translate(70 1150)">
+<text x="0" y="0" font-size="12" fill="#aaa99e" font-weight="600" text-anchor="start">图例</text>
+<line x1="70" y1="-5" x2="100" y2="-5" stroke="#f5d76e" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+<text x="110" y="0" font-size="11" fill="#f5d76e" font-weight="400" text-anchor="start">控制 / IPC</text>
+<line x1="310" y1="-5" x2="340" y2="-5" stroke="#65a8ff" stroke-width="2" marker-end="url(#arrow-blue)"/>
+<text x="350" y="0" font-size="11" fill="#65a8ff" font-weight="400" text-anchor="start">主请求 / 文件</text>
+<line x1="550" y1="-5" x2="580" y2="-5" stroke="#68d391" stroke-width="2" marker-end="url(#arrow-green)"/>
+<text x="590" y="0" font-size="11" fill="#68d391" font-weight="400" text-anchor="start">Memory / 写入</text>
+<line x1="790" y1="-5" x2="820" y2="-5" stroke="#c59cff" stroke-width="2" marker-end="url(#arrow-purple)"/>
+<text x="830" y="0" font-size="11" fill="#c59cff" font-weight="400" text-anchor="start">Embedding / Workflow</text>
+</g>
+<text x="1530" y="1178" font-size="10" fill="#6f716f" font-weight="400" text-anchor="end">v0.7 · generated from source audit</text>
+</svg>

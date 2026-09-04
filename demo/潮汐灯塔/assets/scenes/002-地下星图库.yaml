@@ -1,0 +1,10 @@
+assetId: asset_tide_archive_002
+relPath: assets/scenes/002-地下星图库.png
+mimeType: image/png
+provider: openai-imagegen
+model: gpt-image-2
+prompt: 雾港地下星图库，林月与灯塔守人何执在装满星光玻璃瓶的地图档案室研究发光罗盘，文学幻想写实插画。
+negativePrompt: 文字、字幕、水印、额外人物、现代科技
+references: []
+createdAt: '2026-09-03T00:00:00.000Z'
+sceneId: scene_star_archive

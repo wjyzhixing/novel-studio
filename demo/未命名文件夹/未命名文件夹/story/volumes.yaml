@@ -1,0 +1,17 @@
+version: 1
+volumes:
+  - id: volume_2afabc00-b8f7-47e1-b631-9f226c59847a
+    title: 第一卷
+    order: 0
+    chapterRelPaths:
+      - chapters/002-小牛的休息.md
+      - chapters/001-小牛的冒险.md
+      - chapters/003-小牛的笑容.md
+    createdAt: 2026-09-03T10:26:08.050Z
+    updatedAt: 2026-09-03T11:51:23.716Z
+  - id: volume_7c38a730-df9f-4c2a-a6c9-907a3fe6a8e1
+    title: 测试2
+    order: 1
+    chapterRelPaths: []
+    createdAt: 2026-09-03T10:26:30.251Z
+    updatedAt: 2026-09-03T11:51:23.716Z

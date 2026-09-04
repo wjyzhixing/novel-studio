@@ -1,0 +1,530 @@
+{
+  "schemaVersion": 1,
+  "id": "flow_builtin_novel",
+  "name": "Novel Authoring Flow",
+  "cyclePolicy": "reject",
+  "nodes": [
+    {
+      "id": "chapter-input",
+      "type": "input.chapter",
+      "label": "Chapter Input",
+      "position": {
+        "x": 80,
+        "y": 80
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "chapter",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "context",
+      "type": "context.load",
+      "label": "Context",
+      "position": {
+        "x": 320,
+        "y": 80
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "chapter",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "context",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "plan",
+      "type": "ai.prompt",
+      "label": "Plan",
+      "position": {
+        "x": 560,
+        "y": 80
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {
+        "agent": "plot-planner"
+      }
+    },
+    {
+      "id": "write",
+      "type": "ai.prompt",
+      "label": "Write",
+      "position": {
+        "x": 800,
+        "y": 80
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {
+        "agent": "writer"
+      }
+    },
+    {
+      "id": "critic-character",
+      "type": "ai.critic",
+      "label": "Character Critic",
+      "position": {
+        "x": 80,
+        "y": 250
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {
+        "agent": "character-critic"
+      }
+    },
+    {
+      "id": "critic-logic",
+      "type": "ai.critic",
+      "label": "Logic Critic",
+      "position": {
+        "x": 320,
+        "y": 250
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {
+        "agent": "logic-critic"
+      }
+    },
+    {
+      "id": "critic-style",
+      "type": "ai.critic",
+      "label": "Style Critic",
+      "position": {
+        "x": 560,
+        "y": 250
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {
+        "agent": "style-critic"
+      }
+    },
+    {
+      "id": "critic-merge",
+      "type": "logic.merge",
+      "label": "Merge Critics",
+      "position": {
+        "x": 800,
+        "y": 250
+      },
+      "inputs": [
+        {
+          "id": "character",
+          "type": "any",
+          "required": true
+        },
+        {
+          "id": "logic",
+          "type": "any",
+          "required": true
+        },
+        {
+          "id": "style",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "rewrite",
+      "type": "ai.prompt",
+      "label": "Rewrite",
+      "position": {
+        "x": 80,
+        "y": 420
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {
+        "agent": "rewrite"
+      }
+    },
+    {
+      "id": "review",
+      "type": "human.review",
+      "label": "Review",
+      "position": {
+        "x": 320,
+        "y": 420
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "chapter-write",
+      "type": "chapter.write",
+      "label": "Write Back to Chapter",
+      "position": {
+        "x": 560,
+        "y": 420
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "chapter",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "memory",
+      "type": "memory.extract",
+      "label": "Memory",
+      "position": {
+        "x": 800,
+        "y": 420
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-propose",
+      "type": "image.propose",
+      "label": "Image Proposal",
+      "position": {
+        "x": 80,
+        "y": 590
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-generate",
+      "type": "image.generate",
+      "label": "Generate Illustration",
+      "position": {
+        "x": 320,
+        "y": 590
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-select",
+      "type": "image.select",
+      "label": "Select Illustration",
+      "position": {
+        "x": 560,
+        "y": 590
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-insert",
+      "type": "image.insert",
+      "label": "Insert Illustration",
+      "position": {
+        "x": 800,
+        "y": 590
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-0-chapter-input-context",
+      "source": "chapter-input",
+      "sourcePort": "out",
+      "target": "context",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-1-context-plan",
+      "source": "context",
+      "sourcePort": "out",
+      "target": "plan",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-2-plan-write",
+      "source": "plan",
+      "sourcePort": "out",
+      "target": "write",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-3-write-critic-character",
+      "source": "write",
+      "sourcePort": "out",
+      "target": "critic-character",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-4-write-critic-logic",
+      "source": "write",
+      "sourcePort": "out",
+      "target": "critic-logic",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-5-write-critic-style",
+      "source": "write",
+      "sourcePort": "out",
+      "target": "critic-style",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-6-critic-character-critic-merge",
+      "source": "critic-character",
+      "sourcePort": "out",
+      "target": "critic-merge",
+      "targetPort": "character"
+    },
+    {
+      "id": "edge-7-critic-logic-critic-merge",
+      "source": "critic-logic",
+      "sourcePort": "out",
+      "target": "critic-merge",
+      "targetPort": "logic"
+    },
+    {
+      "id": "edge-8-critic-style-critic-merge",
+      "source": "critic-style",
+      "sourcePort": "out",
+      "target": "critic-merge",
+      "targetPort": "style"
+    },
+    {
+      "id": "edge-9-critic-merge-rewrite",
+      "source": "critic-merge",
+      "sourcePort": "out",
+      "target": "rewrite",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-10-rewrite-review",
+      "source": "rewrite",
+      "sourcePort": "out",
+      "target": "review",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-11-review-chapter-write",
+      "source": "review",
+      "sourcePort": "out",
+      "target": "chapter-write",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-12-chapter-write-memory",
+      "source": "chapter-write",
+      "sourcePort": "out",
+      "target": "memory",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-13-memory-image-propose",
+      "source": "memory",
+      "sourcePort": "out",
+      "target": "image-propose",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-14-image-propose-image-generate",
+      "source": "image-propose",
+      "sourcePort": "out",
+      "target": "image-generate",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-15-image-generate-image-select",
+      "source": "image-generate",
+      "sourcePort": "out",
+      "target": "image-select",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-16-image-select-image-insert",
+      "source": "image-select",
+      "sourcePort": "out",
+      "target": "image-insert",
+      "targetPort": "in"
+    }
+  ],
+  "variables": []
+}

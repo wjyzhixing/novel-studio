@@ -1,0 +1,36 @@
+assetId: asset_a1eb88894d2d2fd02a08
+relPath: assets/scenes/asset_a1eb88894d2d2fd02a08.png
+mimeType: image/png
+provider: openai-compatible
+model: qwen-image-2.0
+prompt: |-
+  Scene: 小牛的笑容
+  小牛的笑容
+
+  明白了。当前上下文仅包含章节标题「小牛的笑容」，没有任何正文或检索内容可供参考，因此我无法基于已有 Canon 作出任何判断——任何输出都将是无依据的臆测。
+
+  我需要明确说明：在缺失正文、邻近章节梗概与作者意图的情况下，输出规划等同于擅自编造设定，违反我的职责与约束。
+
+  请提供以下任一信息，我即可开始正式产出：
+
+  1. **本章正文**（或包含情节走向的摘要）
+  2. **前一章结尾**与**后一章目标**（用于衔接）
+  3. **本章创作意图**（例如：完成某个转折、引入角色、铺垫核心冲突等）
+
+  收到信息后，我将严格按照：
+  - 保持叙事视角与人物口吻一致
+  - 不修改 Canon，只做延伸与结构化
+  - 连续性强、节奏节拍清晰
+
+  的原则，输出「章节目标 → 核心冲突 → 节拍规划 → 场景清单」的完整方案。
+  Subject: 当前章节的主要人物与环境
+  Camera: 中景，略低机位，保持主体与环境关系清晰
+  Composition: 主体位于视觉焦点，前景留出空间层次，背景交代场景线索
+  Lighting: 与情节时间一致的自然光，主体边缘有轻微轮廓光
+  Visual anchor: 小牛的笑容
+negativePrompt: low quality, blurry, inconsistent character design, extra limbs,
+  text, watermark
+references: []
+workflowRunId: run_4db23daf-a7a5-47f9-b47b-027f52c2165b
+createdAt: 2026-09-03T11:58:27.645Z
+idempotencyKey: run_4db23daf-a7a5-47f9-b47b-027f52c2165b:image-generate

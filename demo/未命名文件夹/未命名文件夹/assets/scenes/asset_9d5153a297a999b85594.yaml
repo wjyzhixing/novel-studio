@@ -1,0 +1,20 @@
+assetId: asset_9d5153a297a999b85594
+relPath: assets/scenes/asset_9d5153a297a999b85594.png
+mimeType: image/png
+provider: openai-compatible
+model: qwen-image-2.0
+prompt: |-
+  Scene: 第一章
+  第一章
+
+  小牛老了
+  Subject: 当前章节的主要人物与环境
+  Camera: 中景，略低机位，保持主体与环境关系清晰
+  Composition: 主体位于视觉焦点，前景留出空间层次，背景交代场景线索
+  Lighting: 与情节时间一致的自然光，主体边缘有轻微轮廓光
+  Visual anchor: 第一章
+negativePrompt: low quality, blurry, inconsistent character design, extra limbs,
+  text, watermark
+references: []
+createdAt: 2026-09-03T11:42:17.981Z
+sceneId: scene_082a52afb44c1ece

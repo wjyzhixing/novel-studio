@@ -1,0 +1,5 @@
+.volume-tree{max-height:45vh;overflow:auto;padding:2px 8px 12px 18px}
+.volume-title-input{min-width:0;flex:1;height:22px;border:1px solid #7656ce;border-radius:4px;background:#171820;color:#eee;padding:0 5px;font-size:11px;outline:0}
+.volume-group{margin-bottom:6px}.volume-heading{display:flex;align-items:center;gap:4px;min-height:26px;color:#c7c1e2;font-size:11px}.volume-heading span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.volume-heading small{color:#777986;font-size:9px}.volume-heading button{display:grid;place-items:center;border:0;background:transparent;color:#777986;padding:2px;font-size:9px}.volume-heading button:hover{color:#d3c8ff}.volume-heading.unassigned{color:#8f909d}
+.volume-group .virtual-chapter-list{max-height:none;padding-left:6px;padding-bottom:0}.chapter-volume-select{width:54px;min-width:0;border:0;background:transparent;color:#777986;font-size:8px;padding:1px}.chapter-volume-select:focus{outline:1px solid #7656ce}.chapter-volume-select option{background:#171820;color:#ddd}
+.chapter.drag-over{outline:1px dashed #8e70ff;outline-offset:-2px;background:#2b2250}

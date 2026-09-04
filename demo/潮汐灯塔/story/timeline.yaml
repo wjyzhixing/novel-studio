@@ -1,0 +1,41 @@
+events:
+  - id: evt_tide_compass
+    title: 林月在港口收到罗盘
+    at: 第一天·清晨
+    description: 罗盘在雾港指向被抹去的灯塔。
+    chapterRelPath: chapters/001-港口的罗盘.md
+    entityIds:
+      - ent_lin_yue
+      - ent_tide_compass
+      - ent_mist_harbor
+    locationId: null
+    causes: ""
+    effects: ""
+    updatedAt: 2026-09-03T05:05:32.355Z
+  - id: evt_star_archive
+    title: 地下星图库揭开真相
+    at: 第二天·午夜
+    description: 何执告诉林月，母亲把第一颗星藏进了灯塔。
+    chapterRelPath: chapters/002-地下星图库.md
+    entityIds:
+      - ent_lin_yue
+      - ent_he_zhi
+      - ent_star_archive
+      - ent_mist_harbor
+    locationId: null
+    causes: ""
+    effects: ""
+    updatedAt: 2026-09-03T05:21:03.622Z
+  - id: evt_storm_lighthouse
+    title: 暴风中的灯塔点亮
+    at: 第三天·深夜
+    description: 林月将罗盘举向天空，灯塔重新照见城市。
+    chapterRelPath: chapters/003-风暴抵达灯塔.md
+    entityIds:
+      - ent_lin_yue
+      - ent_tide_compass
+      - ent_tide_lighthouse
+    locationId: null
+    causes: ""
+    effects: ""
+    updatedAt: 2026-09-03T05:21:03.622Z

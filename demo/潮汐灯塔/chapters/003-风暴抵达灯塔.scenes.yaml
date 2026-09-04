@@ -1,0 +1,11 @@
+schemaVersion: 1
+scenes:
+  - id: scene_storm_lighthouse
+    chapterRelPath: chapters/003-风暴抵达灯塔.md
+    title: 风暴中点灯
+    order: 0
+    startParagraph: 1
+    endParagraph: 2
+    summary: 林月在风暴中举起罗盘，让灯塔重新照亮雾港。
+    createdAt: 2026-09-03T00:00:00.000Z
+    updatedAt: 2026-09-03T00:00:00.000Z

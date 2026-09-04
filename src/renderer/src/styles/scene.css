@@ -1,0 +1,17 @@
+.scene-panel{min-width:0;min-height:42px;max-height:250px;overflow:auto;border-bottom:1px solid #24252f;background:#101117;color:#d9d9df}
+.scene-panel-header{display:flex;align-items:center;gap:12px;padding:8px 14px}
+.scene-panel-header>div{display:grid;gap:2px;flex:1}
+.scene-panel-header b{font-size:11px}
+.scene-panel-header small,.scene-row small,.scene-empty{color:#777986;font-size:10px}
+.scene-panel-header button,.scene-actions button{display:inline-flex;align-items:center;gap:5px;border:1px solid #353642;border-radius:5px;background:#181922;color:#b9b9c4;padding:5px 8px;font-size:10px;cursor:pointer;transition:background-color .14s ease,border-color .14s ease,color .14s ease,transform .08s ease}.scene-panel-header button:hover,.scene-actions button:hover:not(:disabled){border-color:#7656ce;background:#30234f;color:#eee}.scene-panel-header button:active,.scene-actions button:active:not(:disabled){transform:translateY(1px)}
+.scene-panel-body{display:grid;grid-template-columns:minmax(160px,230px) minmax(220px,1fr);gap:12px;padding:0 14px 10px}
+.scene-list{display:grid;align-content:start;gap:3px;max-height:150px;overflow:auto}
+.scene-row{display:flex;text-align:left;border:1px solid transparent;border-radius:4px;background:transparent;color:#b9b9c4;padding:3px 4px}.scene-select{display:flex;flex:1;text-align:left;border:0;background:transparent;color:inherit;padding:3px}.scene-reorder{display:flex;gap:1px}.scene-reorder button{display:grid;place-items:center;border:0;background:transparent;color:#777986;padding:2px}.scene-reorder button:hover:not(:disabled){color:#d4caff;background:#302550}.scene-reorder button:disabled{opacity:.25}
+.scene-row:hover,.scene-row.active{background:#211b39;border-color:#41356d;color:#eee}
+.scene-row span{display:grid;gap:2px}.scene-row strong{font-size:10px;font-weight:500}
+.scene-editor{display:grid;gap:6px}.scene-editor label{display:grid;gap:3px;color:#8f909d;font-size:10px}
+.scene-editor input,.scene-editor textarea{min-width:0;background:#171820;border:1px solid #30313c;border-radius:4px;color:#eee;padding:5px 6px;font:inherit}
+.scene-editor textarea{min-height:38px;resize:vertical}.scene-range{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.scene-actions{display:flex;gap:6px}.scene-actions .primary{background:#2b2250;border-color:#59459a;color:#d8d0ff}
+.scene-message{grid-column:1/-1;color:#a999e8;font-size:10px}
+.editor-scope{color:#a994ff;font-size:11px}

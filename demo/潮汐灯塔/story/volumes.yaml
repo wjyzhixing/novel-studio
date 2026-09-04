@@ -1,0 +1,25 @@
+version: 1
+volumes:
+  - id: volume_mist
+    title: 第一卷 雾中来信
+    order: 0
+    chapterRelPaths:
+      - chapters/001-港口的罗盘.md
+      - chapters/002-地下星图库.md
+      - chapters/003-风暴抵达灯塔.md
+    createdAt: 2026-09-03T00:00:00.000Z
+    updatedAt: 2026-09-03T05:21:03.635Z
+  - id: volume_storm
+    title: 第二卷 灯塔之心
+    order: 1
+    chapterRelPaths: []
+    createdAt: 2026-09-03T00:00:00.000Z
+    updatedAt: 2026-09-03T05:21:03.635Z
+  - id: volume_3ef301a8-a7d2-4242-a13e-82448188c83e
+    title: 第三卷 读者指引
+    order: 2
+    chapterRelPaths:
+      - chapters/004-海岸线归来.md
+      - chapters/005-美国之风.md
+    createdAt: 2026-09-03T05:20:23.432Z
+    updatedAt: 2026-09-03T05:21:03.635Z

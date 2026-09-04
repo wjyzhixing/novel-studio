@@ -1,0 +1,11 @@
+schemaVersion: 1
+scenes:
+  - id: scene_star_archive
+    chapterRelPath: chapters/002-地下星图库.md
+    title: 星光地图揭密
+    order: 0
+    startParagraph: 1
+    endParagraph: 2
+    summary: 林月与何执在地下星图库发现母亲留下的灯塔线索。
+    createdAt: 2026-09-03T00:00:00.000Z
+    updatedAt: 2026-09-03T00:00:00.000Z

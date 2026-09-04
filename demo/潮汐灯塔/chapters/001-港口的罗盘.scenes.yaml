@@ -1,0 +1,11 @@
+schemaVersion: 1
+scenes:
+  - id: scene_tide_arrival
+    chapterRelPath: chapters/001-港口的罗盘.md
+    title: 港口收到罗盘
+    order: 0
+    startParagraph: 1
+    endParagraph: 2
+    summary: 林月收到母亲遗物，发现罗盘指向不存在的灯塔。
+    createdAt: '2026-09-03T00:00:00.000Z'
+    updatedAt: '2026-09-03T00:00:00.000Z'

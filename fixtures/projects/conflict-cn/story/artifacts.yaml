@@ -1,0 +1,6 @@
+artifacts:
+  - id: art_conflict
+    kind: foreshadowing
+    title: 未回收伏笔
+    fields:
+      status: planted

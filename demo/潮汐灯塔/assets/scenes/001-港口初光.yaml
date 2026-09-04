@@ -1,0 +1,10 @@
+assetId: asset_tide_harbor_001
+relPath: assets/scenes/001-港口初光.png
+mimeType: image/png
+provider: openai-imagegen
+model: gpt-image-2
+prompt: 雾港清晨码头，年轻地图师林月手持发出蓝光的黄铜罗盘，远处是被海雾包围的灯塔，文学幻想写实插画。
+negativePrompt: 文字、字幕、水印、现代车辆、额外人物
+references: []
+createdAt: '2026-09-03T00:00:00.000Z'
+sceneId: scene_tide_arrival

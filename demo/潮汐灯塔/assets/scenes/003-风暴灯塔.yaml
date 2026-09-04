@@ -1,0 +1,10 @@
+assetId: asset_tide_storm_003
+relPath: assets/scenes/003-风暴灯塔.png
+mimeType: image/png
+provider: openai-imagegen
+model: gpt-image-2
+prompt: 暴风夜的潮汐灯塔顶部，林月举起发光黄铜罗盘，星光穿透乌云，海浪在脚下爆裂，文学幻想写实插画。
+negativePrompt: 文字、字幕、水印、现代科技、额外人物
+references: []
+createdAt: '2026-09-03T00:00:00.000Z'
+sceneId: scene_storm_lighthouse

@@ -1,0 +1,13 @@
+{
+  "name": "extract-zip",
+  "version": "2.0.2-novelstudio.1",
+  "description": "Safe ZIP extraction compatibility package for Novel Studio",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "license": "BSD-2-Clause",
+  "dependencies": {
+    "debug": "^4.1.1",
+    "get-stream": "^5.1.1",
+    "yauzl": "^2.10.0"
+  }
+}

@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "id": "flow_builtin_novel",
+  "name": "Fixture Novel Flow",
+  "cyclePolicy": "reject",
+  "nodes": [
+    {
+      "id": "chapter-input",
+      "type": "input.chapter",
+      "label": "Chapter Input",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "inputs": [],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "chapter",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "review",
+      "type": "human.review",
+      "label": "Review",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-propose",
+      "type": "image.propose",
+      "label": "Image Proposal",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-generate",
+      "type": "image.generate",
+      "label": "Generate Illustration",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-select",
+      "type": "image.select",
+      "label": "Select Illustration",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    },
+    {
+      "id": "image-insert",
+      "type": "image.insert",
+      "label": "Insert Illustration",
+      "position": {
+        "x": 0,
+        "y": 0
+      },
+      "inputs": [
+        {
+          "id": "in",
+          "type": "any",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "id": "out",
+          "type": "any",
+          "required": false
+        }
+      ],
+      "config": {}
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge-0-chapter-input-review",
+      "source": "chapter-input",
+      "sourcePort": "out",
+      "target": "review",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-1-review-image-propose",
+      "source": "review",
+      "sourcePort": "out",
+      "target": "image-propose",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-2-image-propose-image-generate",
+      "source": "image-propose",
+      "sourcePort": "out",
+      "target": "image-generate",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-3-image-generate-image-select",
+      "source": "image-generate",
+      "sourcePort": "out",
+      "target": "image-select",
+      "targetPort": "in"
+    },
+    {
+      "id": "edge-4-image-select-image-insert",
+      "source": "image-select",
+      "sourcePort": "out",
+      "target": "image-insert",
+      "targetPort": "in"
+    }
+  ],
+  "variables": []
+}

@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "flow_tide_lighthouse",
+  "name": "潮汐灯塔·全流程创作",
+  "cyclePolicy": "reject",
+  "variables": [
+    { "name": "tone", "type": "text", "defaultValue": "冷蓝海雾、克制而有希望" },
+    { "name": "illustrationStyle", "type": "text", "defaultValue": "文学幻想写实插画" }
+  ],
+  "nodes": [
+    { "id": "chapter-input", "type": "input.chapter", "label": "Chapter Input", "position": { "x": 0, "y": 0 }, "inputs": [], "outputs": [{ "id": "out", "type": "chapter", "required": false }], "config": {} },
+    { "id": "context", "type": "context.load", "label": "Context", "position": { "x": 160, "y": 0 }, "inputs": [{ "id": "in", "type": "chapter", "required": true }], "outputs": [{ "id": "out", "type": "context", "required": false }], "config": {} },
+    { "id": "plan", "type": "ai.prompt", "label": "Plan", "position": { "x": 320, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "plot-planner", "prompt": "基于上下文规划本章冲突、转折和伏笔回收。风格={{tone}}" } },
+    { "id": "write", "type": "ai.prompt", "label": "Write", "position": { "x": 480, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "writer", "prompt": "根据规划生成章节草稿，保持人物和世界观一致。" } },
+    { "id": "review", "type": "human.review", "label": "Human Review", "position": { "x": 640, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "chapter-write", "type": "chapter.write", "label": "Write Back to Chapter", "position": { "x": 800, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "chapter", "required": false }], "config": {} },
+    { "id": "memory", "type": "memory.extract", "label": "Memory Extract", "position": { "x": 960, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "image-propose", "type": "image.propose", "label": "Image Proposal", "position": { "x": 1120, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "style": "{{illustrationStyle}}" } },
+    { "id": "image-generate", "type": "image.generate", "label": "Generate Illustration", "position": { "x": 1280, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "image-select", "type": "image.select", "label": "Human Image Select", "position": { "x": 1440, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "image-insert", "type": "image.insert", "label": "Insert Illustration", "position": { "x": 1600, "y": 0 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} }
+  ],
+  "edges": [
+    { "id": "e1", "source": "chapter-input", "sourcePort": "out", "target": "context", "targetPort": "in" },
+    { "id": "e2", "source": "context", "sourcePort": "out", "target": "plan", "targetPort": "in" },
+    { "id": "e3", "source": "plan", "sourcePort": "out", "target": "write", "targetPort": "in" },
+    { "id": "e4", "source": "write", "sourcePort": "out", "target": "review", "targetPort": "in" },
+    { "id": "e5", "source": "review", "sourcePort": "out", "target": "chapter-write", "targetPort": "in" },
+    { "id": "e6", "source": "chapter-write", "sourcePort": "out", "target": "memory", "targetPort": "in" },
+    { "id": "e7", "source": "memory", "sourcePort": "out", "target": "image-propose", "targetPort": "in" },
+    { "id": "e8", "source": "image-propose", "sourcePort": "out", "target": "image-generate", "targetPort": "in" },
+    { "id": "e9", "source": "image-generate", "sourcePort": "out", "target": "image-select", "targetPort": "in" },
+    { "id": "e10", "source": "image-select", "sourcePort": "out", "target": "image-insert", "targetPort": "in" }
+  ]
+}

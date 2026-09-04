@@ -1,0 +1,22 @@
+artifacts:
+  - id: art_first_star
+    kind: foreshadowing
+    title: 第一颗星会记住海岸线
+    fields:
+      setup: 罗盘指向不存在的灯塔，母亲的地图缺少同一段海岸线。
+      target: 林月必须在大潮前点亮灯塔。
+      payoffDeadline: 第三章暴风之夜
+      status: planted
+      evidence: '罗盘不是导航工具，而是一把记忆的钥匙。'
+      evidenceItems:
+        - chapterRelPath: chapters/001-港口的罗盘.md
+          quote: 罗盘的指针没有指向北方。
+          note: 第一处异常
+  - id: art_city_memory
+    kind: plot
+    title: 雾港正在失去自己的地名
+    fields:
+      status: in-progress
+      setup: 人们开始忘记街道和海湾的名字。
+      payoff: 灯塔重新照亮所有人的记忆。
+      priority: high

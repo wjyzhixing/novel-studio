@@ -1,0 +1,15 @@
+/* Keep the right IDE pane inside the viewport while its active tool scrolls. */
+.right-panel-content{display:flex;height:100%;min-height:0;flex-direction:column}
+.right-panel-content>.right-tabs{flex:0 0 43px}
+.right-panel-content>.right-scroll{height:auto;min-height:0;flex:1 1 auto;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.right-panel-content>.right-scroll>*{box-sizing:border-box;max-width:100%;min-width:0}
+.right-panel-content>.right-scroll .workflow-line{display:flex;flex-wrap:wrap;justify-content:flex-start;align-content:flex-start;gap:12px 8px;width:100%;min-width:0;overflow:visible}
+.right-panel-content>.right-scroll .wf-step{flex:0 1 52px;min-width:42px;max-width:68px;text-align:center;overflow-wrap:anywhere;word-break:break-word}
+.right-panel-content>.right-scroll .wf-step small{max-width:100%;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.25}
+.right-panel-content>.right-scroll .runtime-card,.right-panel-content>.right-scroll .workflow-scope-card,.right-panel-content>.right-scroll .human-review-card{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.right-panel-content>.right-scroll .runtime-node{min-width:0}
+.right-panel-content>.right-scroll .runtime-node span,.right-panel-content>.right-scroll .runtime-node small{min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.right-panel-content>.right-scroll .runtime-card{width:100%;margin-left:0;margin-right:0;overflow:hidden}
+.right-panel-content>.right-scroll .workflow-asset-choices{min-width:0;max-width:100%;overflow:hidden}
+.right-panel-content>.right-scroll .workflow-asset-choices>button{min-width:0;max-width:100%;overflow:hidden}
+.right-panel-content>.right-scroll .workflow-asset-choices>button em,.right-panel-content>.right-scroll .workflow-asset-choices>button span{min-width:0;overflow-wrap:anywhere;word-break:break-word}
