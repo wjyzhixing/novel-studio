@@ -1,6 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
+import { RendererErrorBoundary } from './components/RendererErrorBoundary'
+import './styles/tokens.css'
 import './styles/app.css'
 import './styles/scene.css'
 import './styles/volume.css'
@@ -12,9 +14,13 @@ import './styles/graph-meta.css'
 import './styles/story-meta.css'
 import './styles/health.css'
 import './styles/right-panel.css'
+import './styles/authoring-flow.css'
+import './styles/authoring-wizard.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <RendererErrorBoundary>
+      <App />
+    </RendererErrorBoundary>
   </React.StrictMode>
 )

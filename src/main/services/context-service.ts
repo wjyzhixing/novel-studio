@@ -36,13 +36,19 @@ export class ContextService {
   }
 
   async readSnapshot(id: string): Promise<ContextSnapshot> {
-    const row = this.project.database.raw.prepare('SELECT file_path FROM context_snapshots WHERE id = ?').get(id) as { file_path: string } | undefined
+    const row = this.project.database.raw.prepare('SELECT file_path, request_hash, result_hash FROM context_snapshots WHERE id = ?').get(id) as { file_path: string; request_hash: string; result_hash: string } | undefined
     if (!row) throw new DomainError('PROJECT_NOT_FOUND', `Context Snapshot 不存在: ${id}`)
     try {
       const value = JSON.parse(await readFile(this.project.resolveInProject(row.file_path), 'utf8')) as ContextSnapshot
       if (value.id !== id) throw new Error('snapshot id mismatch')
+      const requestHash = hashValue({ relPath: value.request.relPath, selection: value.request.selection ?? null, query: value.request.query ?? '', recipe: value.request.recipe })
+      const resultHash = hashResult(value.result)
+      if (requestHash !== value.requestHash || resultHash !== value.resultHash || requestHash !== row.request_hash || resultHash !== row.result_hash) {
+        throw new DomainError('IO_ERROR', `Context Snapshot 完整性校验失败: ${id}`)
+      }
       return normalizeSnapshot(value)
     } catch (error) {
+      if (error instanceof DomainError) throw error
       throw new DomainError('IO_ERROR', `Context Snapshot 无法读取: ${error instanceof Error ? error.message : String(error)}`)
     }
   }
@@ -57,7 +63,23 @@ export class ContextService {
     const migrated = fromFormatVersion !== CONTEXT_SNAPSHOT_FORMAT_VERSION || fromRetrievalVersion !== CONTEXT_RETRIEVAL_VERSION || fromProjectSchemaVersion !== NOVEL_SCHEMA_VERSION
     const notes = migrated ? ['旧 Snapshot 已按当前格式重新规范化并回放'] : []
     if (fromRetrievalVersion !== CONTEXT_RETRIEVAL_VERSION) notes.push(`检索版本 v${fromRetrievalVersion} → v${CONTEXT_RETRIEVAL_VERSION}：使用当前 Embedding/FTS 索引重新计算来源与预算`)
-    return { snapshot, current, currentResultHash, changed: currentResultHash !== snapshot.resultHash, differences: compareContextItems(snapshot.result.manifest.items, current.manifest.items), compatibility: { migrated, fromFormatVersion, fromRetrievalVersion, notes } }
+    if (fromProjectSchemaVersion !== NOVEL_SCHEMA_VERSION) notes.push(`项目 schema v${fromProjectSchemaVersion} → v${NOVEL_SCHEMA_VERSION}：按当前项目数据重新构建检索上下文`)
+    return {
+      snapshot,
+      current,
+      currentResultHash,
+      changed: currentResultHash !== snapshot.resultHash,
+      differences: compareContextItems(snapshot.result.manifest.items, current.manifest.items),
+      compatibility: {
+        migrated,
+        fromFormatVersion,
+        fromRetrievalVersion,
+        fromProjectSchemaVersion,
+        resultStrategy: 'recompute',
+        sourceResultReusable: false,
+        notes
+      }
+    }
   }
 
   private async buildContext(request: ContextRequest): Promise<ContextResult> {
@@ -85,6 +107,21 @@ export class ContextService {
     ].filter(Boolean).join('\n')
     add('structured', 'story-bible', structured, 80)
 
+    const chapterMetas = await this.chapters.list()
+    const currentChapterIndex = chapterMetas.findIndex((meta) => meta.relPath === request.relPath)
+    const recencyCandidates = currentChapterIndex > 0 && recipe.recencyLimit > 0
+      ? chapterMetas.slice(Math.max(0, currentChapterIndex - recipe.recencyLimit), currentChapterIndex).reverse()
+      : []
+    for (const [index, meta] of recencyCandidates.entries()) {
+      try {
+        const recentChapter = await this.chapters.read(meta.relPath)
+        const summary = recentChapter.markdown.replace(/^#{1,6}\s+/gm, '').split(/\n\s*\n/).filter(Boolean).slice(0, 2).join('\n\n').slice(0, 1_000)
+        add('recency', meta.relPath, summary, 70 - index)
+      } catch {
+        // A missing historical chapter should not prevent the current context from building.
+      }
+    }
+
     const query = request.query?.trim() || chapter.title
     const semantic = await this.embeddings?.search(query, recipe.semanticLimit)
     const hits = semantic?.hits ?? await this.chapters.search(query)
@@ -94,7 +131,7 @@ export class ContextService {
     })
 
     const fitted = fitItems(items, recipe.maxTokens)
-    const candidateCounts = { pinned: (chapter.markdown.trim() ? 1 : 0) + (recipe.includeSelection && Boolean(request.selection?.trim()) ? 1 : 0), structured: entities.slice(0, recipe.entityLimit).length + timeline.slice(0, recipe.entityLimit).length + facts.slice(0, recipe.entityLimit).length, semantic: Math.min(hits.length, recipe.semanticLimit) }
+    const candidateCounts = { pinned: (chapter.markdown.trim() ? 1 : 0) + (recipe.includeSelection && Boolean(request.selection?.trim()) ? 1 : 0), structured: entities.slice(0, recipe.entityLimit).length + timeline.slice(0, recipe.entityLimit).length + facts.slice(0, recipe.entityLimit).length, recency: recencyCandidates.length, semantic: Math.min(hits.length, recipe.semanticLimit) }
     const manifest: ContextManifest = { recipeId: recipe.id, budgetTokens: recipe.maxTokens, totalTokens: fitted.items.reduce((sum, item) => sum + item.estimatedTokens, 0), omittedSources: fitted.omittedSources, items: fitted.items, retrieval: { query, selectionIncluded: recipe.includeSelection && Boolean(request.selection?.trim()), method: semantic?.method ?? 'fts', candidateCounts, selectedSources: fitted.items.map((item) => item.source), omittedSources: fitted.omittedSources }, retrievalVersion: CONTEXT_RETRIEVAL_VERSION, generatedAt: new Date().toISOString() }
     return { manifest, text: fitted.items.map((item) => `[${capitalize(item.layer)}] ${item.source}\n${item.text}`).join('\n\n') }
   }
@@ -156,9 +193,11 @@ function toSummary(row: SnapshotRow): ContextSnapshotSummary {
 function normalizeSnapshot(value: ContextSnapshot): ContextSnapshot {
   const sourceFormatVersion = value.formatVersion ?? 0
   if (sourceFormatVersion > CONTEXT_SNAPSHOT_FORMAT_VERSION) throw new DomainError('VALIDATION_FAILED', `Context Snapshot 格式 v${sourceFormatVersion} 高于当前支持的 v${CONTEXT_SNAPSHOT_FORMAT_VERSION}，无法回放`)
+  const sourceProjectSchemaVersion = value.projectSchemaVersion ?? 1
+  if (sourceProjectSchemaVersion > NOVEL_SCHEMA_VERSION) throw new DomainError('VALIDATION_FAILED', `项目 schema v${sourceProjectSchemaVersion} 高于当前支持的 v${NOVEL_SCHEMA_VERSION}，无法回放`)
   const sourceRetrievalVersion = value.retrievalVersion ?? value.result?.manifest?.retrievalVersion ?? 0
   if (sourceRetrievalVersion > CONTEXT_RETRIEVAL_VERSION) throw new DomainError('VALIDATION_FAILED', `Context 检索版本 v${sourceRetrievalVersion} 高于当前支持的 v${CONTEXT_RETRIEVAL_VERSION}，无法回放`)
-  return { ...value, sourceFormatVersion: sourceFormatVersion, sourceProjectSchemaVersion: value.projectSchemaVersion ?? 1, sourceRetrievalVersion, formatVersion: CONTEXT_SNAPSHOT_FORMAT_VERSION, projectSchemaVersion: value.projectSchemaVersion ?? 1, retrievalVersion: CONTEXT_RETRIEVAL_VERSION, result: { ...value.result, manifest: { ...value.result.manifest, retrievalVersion: CONTEXT_RETRIEVAL_VERSION } } }
+  return { ...value, sourceFormatVersion: sourceFormatVersion, sourceProjectSchemaVersion, sourceRetrievalVersion, formatVersion: CONTEXT_SNAPSHOT_FORMAT_VERSION, projectSchemaVersion: sourceProjectSchemaVersion, retrievalVersion: CONTEXT_RETRIEVAL_VERSION, result: { ...value.result, manifest: { ...value.result.manifest, retrievalVersion: CONTEXT_RETRIEVAL_VERSION } } }
 }
 
 function hashValue(value: unknown): string {

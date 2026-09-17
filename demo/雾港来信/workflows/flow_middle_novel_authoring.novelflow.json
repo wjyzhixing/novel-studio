@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "flow_middle_novel_authoring",
+  "name": "雾港来信·逐章创作闭环",
+  "cyclePolicy": "reject",
+  "variables": [
+    { "name": "tone", "type": "text", "defaultValue": "潮湿、克制、带有旧城生活感的都市悬疑" },
+    { "name": "chapterLength", "type": "text", "defaultValue": "1500-2500 字" }
+  ],
+  "nodes": [
+    { "id": "chapter-input", "type": "input.chapter", "label": "读取当前章节", "position": { "x": 0, "y": 180 }, "inputs": [], "outputs": [{ "id": "out", "type": "chapter", "required": false }], "config": {} },
+    { "id": "context", "type": "context.load", "label": "构建 Context", "position": { "x": 220, "y": 180 }, "inputs": [{ "id": "in", "type": "chapter", "required": true }], "outputs": [{ "id": "out", "type": "context", "required": false }], "config": { "contextRecipe": "mist-harbor-chapter" } },
+    { "id": "plan", "type": "ai.prompt", "label": "章节规划", "position": { "x": 460, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "plot-planner", "prompt": "基于 Context 规划本章目标、冲突、转折、场景 beats 和结尾钩子。目标长度={{chapterLength}}，基调={{tone}}。" } },
+    { "id": "write", "type": "ai.prompt", "label": "生成章节草稿", "position": { "x": 700, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "writer", "prompt": "按照规划写出本章正文，只输出可审核的正文草稿，不解决主谜团。" } },
+    { "id": "critic-character", "type": "ai.critic", "label": "人物一致性检查", "position": { "x": 960, "y": 20 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "character-critic", "prompt": "检查林岚及配角的目标、恐惧、秘密、关系和已知信息是否一致。" } },
+    { "id": "critic-logic", "type": "ai.critic", "label": "逻辑一致性检查", "position": { "x": 960, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "logic-critic", "prompt": "检查因果、时间、空间、证据和悬疑信息释放是否自洽。" } },
+    { "id": "critic-style", "type": "ai.critic", "label": "文风一致性检查", "position": { "x": 960, "y": 340 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "style-critic", "prompt": "检查第三人称限知视角、节奏、重复表达、感官细节和克制的都市悬疑语气。" } },
+    { "id": "critic-merge", "type": "logic.merge", "label": "合并审阅意见", "position": { "x": 1210, "y": 180 }, "inputs": [{ "id": "character", "type": "any", "required": true }, { "id": "logic", "type": "any", "required": true }, { "id": "style", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "rewrite", "type": "ai.prompt", "label": "按意见重写", "position": { "x": 1460, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": { "agent": "rewrite", "prompt": "综合三类审阅意见重写正文，只输出可审核正文，保留未揭示的主谜团和已确认事实。" } },
+    { "id": "review", "type": "human.review", "label": "人工审核", "position": { "x": 1710, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "chapter-write", "type": "chapter.write", "label": "审核后写回章节", "position": { "x": 1960, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "chapter", "required": false }], "config": {} },
+    { "id": "memory", "type": "memory.extract", "label": "提取候选事实", "position": { "x": 2210, "y": 180 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} }
+  ],
+  "edges": [
+    { "id": "edge-input-context", "source": "chapter-input", "sourcePort": "out", "target": "context", "targetPort": "in" },
+    { "id": "edge-context-plan", "source": "context", "sourcePort": "out", "target": "plan", "targetPort": "in" },
+    { "id": "edge-plan-write", "source": "plan", "sourcePort": "out", "target": "write", "targetPort": "in" },
+    { "id": "edge-write-character", "source": "write", "sourcePort": "out", "target": "critic-character", "targetPort": "in" },
+    { "id": "edge-write-logic", "source": "write", "sourcePort": "out", "target": "critic-logic", "targetPort": "in" },
+    { "id": "edge-write-style", "source": "write", "sourcePort": "out", "target": "critic-style", "targetPort": "in" },
+    { "id": "edge-character-merge", "source": "critic-character", "sourcePort": "out", "target": "critic-merge", "targetPort": "character" },
+    { "id": "edge-logic-merge", "source": "critic-logic", "sourcePort": "out", "target": "critic-merge", "targetPort": "logic" },
+    { "id": "edge-style-merge", "source": "critic-style", "sourcePort": "out", "target": "critic-merge", "targetPort": "style" },
+    { "id": "edge-merge-rewrite", "source": "critic-merge", "sourcePort": "out", "target": "rewrite", "targetPort": "in" },
+    { "id": "edge-rewrite-review", "source": "rewrite", "sourcePort": "out", "target": "review", "targetPort": "in" },
+    { "id": "edge-review-write", "source": "review", "sourcePort": "out", "target": "chapter-write", "targetPort": "in" },
+    { "id": "edge-write-memory", "source": "chapter-write", "sourcePort": "out", "target": "memory", "targetPort": "in" }
+  ]
+}

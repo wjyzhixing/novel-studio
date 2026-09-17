@@ -1,8 +1,33 @@
 import type { Workflow, WorkflowIssue } from '../../shared/workflow'
 
-export function validateWorkflow(workflow: Workflow): WorkflowIssue[] {
+/** Node types whose execution is implemented and owned by the Main process. */
+export const BUILTIN_WORKFLOW_NODE_TYPES = new Set([
+  'input.chapter',
+  'context.load',
+  'memory.extract',
+  'chapter.write',
+  'image.propose',
+  'image.prompt',
+  'image.generate',
+  'image.select',
+  'image.insert',
+  'human.review',
+  'logic.condition',
+  'logic.merge',
+  'utility.transform',
+  'ai.prompt',
+  'ai.generate',
+  'ai.critic'
+])
+
+export function validateWorkflow(workflow: Workflow, additionalNodeTypes: Iterable<string> = []): WorkflowIssue[] {
   const issues: WorkflowIssue[] = []; const nodes = new Map<string, Workflow['nodes'][number]>()
-  for (const node of workflow.nodes) { if (nodes.has(node.id)) issues.push({ code: 'DUPLICATE_NODE', nodeId: node.id, message: `节点 ID 重复: ${node.id}` }); else nodes.set(node.id, node) }
+  const allowedNodeTypes = new Set([...BUILTIN_WORKFLOW_NODE_TYPES, ...additionalNodeTypes])
+  for (const node of workflow.nodes) {
+    if (nodes.has(node.id)) issues.push({ code: 'DUPLICATE_NODE', nodeId: node.id, message: `节点 ID 重复: ${node.id}` })
+    else nodes.set(node.id, node)
+    if (!allowedNodeTypes.has(node.type)) issues.push({ code: 'UNKNOWN_NODE', nodeId: node.id, message: `节点类型未注册或不受支持: ${node.type}` })
+  }
   const indegree = new Map<string, number>(workflow.nodes.map((node) => [node.id, 0])); const adjacency = new Map<string, string[]>()
   for (const edge of workflow.edges) {
     const source = nodes.get(edge.source); const target = nodes.get(edge.target)

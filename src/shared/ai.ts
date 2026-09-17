@@ -4,7 +4,7 @@ import type { ContextManifest, ContextRequest } from './context'
 
 export const providerKindSchema = z.enum(['openai-compatible', 'anthropic', 'gemini', 'mock'])
 export type ProviderKind = z.infer<typeof providerKindSchema>
-export const agentIdSchema = z.enum(['plot-planner', 'writer', 'character-critic', 'logic-critic', 'style-critic', 'rewrite', 'memory-extractor', 'visual-director'])
+export const agentIdSchema = z.enum(['plot-planner', 'writer', 'character-critic', 'logic-critic', 'style-critic', 'rewrite', 'memory-extractor', 'visual-director', 'image-prompt'])
 export type AgentId = z.infer<typeof agentIdSchema>
 export interface AiStreamOptions { agentId?: AgentId; contextRequest?: ContextRequest }
 export interface AgentPolicy { agentId: AgentId; temperature: number; maxOutputTokens: number; contextRecipeId: string; tools: string[]; outputSchema?: string; maxRetries: number }
@@ -28,10 +28,22 @@ export type ProviderProfile = z.infer<typeof providerProfileSchema>
 
 export type ChatRole = 'system' | 'user' | 'assistant'
 export interface ChatMessage { role: ChatRole; content: string }
-export interface ChatRequest { messages: ChatMessage[]; temperature?: number; maxOutputTokens?: number }
+export const responseSchemaSchema = z.object({
+  name: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,99}$/),
+  schema: z.record(z.string(), z.unknown()),
+  strict: z.boolean().optional()
+}).superRefine((value, context) => {
+  try {
+    if (JSON.stringify(value.schema).length > 200_000) context.addIssue({ code: 'custom', message: 'response schema too large' })
+  } catch {
+    context.addIssue({ code: 'custom', message: 'response schema is not serializable' })
+  }
+})
+export interface ResponseSchema { name: string; schema: Record<string, unknown>; strict?: boolean }
+export interface ChatRequest { messages: ChatMessage[]; temperature?: number; maxOutputTokens?: number; responseSchema?: ResponseSchema }
 export interface TokenUsage { inputTokens: number; outputTokens: number; totalTokens: number }
 export interface ChatResult { text: string; model: string; requestId?: string; agentId?: AgentId; context?: ContextManifest; usage?: TokenUsage }
-export interface StructuredRequest<T> { request: ChatRequest; parse(text: string): T }
+export interface StructuredRequest<T> { request: ChatRequest; responseSchema?: ResponseSchema; parse(text: string): T }
 export type ChatEvent = { type: 'delta'; text: string } | { type: 'done'; result: ChatResult } | { type: 'error'; message: string }
 export interface AiStreamEnvelope { jobId: string; event: ChatEvent }
 

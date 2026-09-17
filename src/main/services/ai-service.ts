@@ -1,6 +1,6 @@
 import { appendFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
-import { resolveContextBudget, resolveOutputBudget, type ChatEvent, type ChatRequest, type ChatResult, type EmbeddingResult, type ModelInfo, type ProviderProfile, type StructuredRequest } from '../../shared/ai'
+import { resolveContextBudget, resolveOutputBudget, responseSchemaSchema, type ChatEvent, type ChatRequest, type ChatResult, type EmbeddingResult, type ModelInfo, type ProviderProfile, type StructuredRequest } from '../../shared/ai'
 import { imageSecretId } from '../../shared/ai'
 import { providerProfileSchema } from '../../shared/ai'
 import type { ProjectService } from './project-service'
@@ -9,10 +9,16 @@ import { providerFor } from './ai-provider'
 import { DomainError } from './errors'
 import type { AgentService } from './agent-service'
 import type { ContextResult } from '../../shared/context'
+import { RequestRateLimiter } from './request-rate-limiter'
 
 export class AiService {
   private readonly streams = new Map<string, () => void>()
-  constructor(private readonly project: ProjectService, private readonly secrets: SecretStore, private readonly agents?: AgentService) {}
+  private readonly requestLimiter: RequestRateLimiter
+  private readonly allowDeterministicMock: boolean
+  constructor(private readonly project: ProjectService, private readonly secrets: SecretStore, private readonly agents?: AgentService, requestLimiter?: RequestRateLimiter, options: { allowDeterministicMock?: boolean } = {}) {
+    this.requestLimiter = requestLimiter ?? new RequestRateLimiter({ maxRequests: 30, windowMs: 60_000 })
+    this.allowDeterministicMock = options.allowDeterministicMock === true
+  }
   private get db() { return this.project.database.raw }
 
   async listProfiles(): Promise<ProviderProfile[]> {
@@ -51,13 +57,14 @@ export class AiService {
   async hasImageSecret(profileId: string) { return this.secrets.has(imageSecretId(profileId)) }
   async setImageSecret(profileId: string, secret: string): Promise<null> { if (!secret.trim()) throw new DomainError('VALIDATION_FAILED', 'Image API Key 不能为空'); await this.secrets.set(imageSecretId(profileId), secret); return null }
   async removeImageSecret(profileId: string): Promise<null> { await this.secrets.remove(imageSecretId(profileId)); return null }
-  async testProfile(profileId: string): Promise<ModelInfo[]> { return (await this.provider(profileId)).listModels() }
+  async testProfile(profileId: string): Promise<ModelInfo[]> { this.consumeRequest(profileId); return (await this.provider(profileId)).listModels() }
   async contextBudget(profileId: string, requestedTokens: number, reservedOutputTokens = 0): Promise<number> {
     const profile = (await this.listProfiles()).find((item) => item.id === profileId)
     if (!profile) await this.provider(profileId)
     return resolveContextBudget(requestedTokens, profile?.contextWindow, reservedOutputTokens)
   }
   async testEmbedding(profileId: string): Promise<{ model: string; dimensions: number }> {
+    this.consumeRequest(profileId)
     const provider = await this.provider(profileId)
     if (!provider.profile.embeddingModel) throw new DomainError('VALIDATION_FAILED', '请先配置 Embedding Model')
     const result = await provider.embed(['Novel Studio embedding connection test'])
@@ -67,9 +74,11 @@ export class AiService {
   }
   async embed(profileId: string, texts: string[], signal?: AbortSignal): Promise<EmbeddingResult> {
     if (texts.some((text) => text.length > 2_000_000)) throw new DomainError('VALIDATION_FAILED', 'Embedding 文本不能超过 2MB')
+    this.consumeRequest(profileId)
     return (await this.provider(profileId)).embed(texts, signal)
   }
   async chat(profileId: string, request: ChatRequest, signal?: AbortSignal): Promise<ChatResult> {
+    this.consumeRequest(profileId)
     const normalizedRequest = await this.normalizeRequest(profileId, request)
     const started = performance.now(); const startedAt = new Date().toISOString()
     try {
@@ -82,9 +91,23 @@ export class AiService {
     }
   }
   async structured<T>(profileId: string, request: StructuredRequest<T>, signal?: AbortSignal): Promise<T> {
+    this.consumeRequest(profileId)
     const provider = await this.provider(profileId)
     const normalizedRequest = await this.normalizeRequest(profileId, request.request)
-    return provider.structured({ ...request, request: normalizedRequest }, signal)
+    const started = performance.now(); const startedAt = new Date().toISOString()
+    const inputChars = normalizedRequest.messages.reduce((sum, message) => sum + message.content.length, 0)
+    try {
+      const responseSchema = (() => {
+        if (!request.responseSchema) return undefined
+        try { return responseSchemaSchema.parse(request.responseSchema) } catch { throw new DomainError('VALIDATION_FAILED', '结构化输出 schema 无效') }
+      })()
+      const result = await provider.structured({ ...request, ...(responseSchema ? { responseSchema } : {}), request: normalizedRequest }, signal)
+      await this.recordAudit({ id: `ai_${randomUUID()}`, kind: 'chat', profileId, model: provider.profile.model, messageCount: normalizedRequest.messages.length, inputChars, outcome: 'succeeded', startedAt, durationMs: Math.round(performance.now() - started) })
+      return result
+    } catch (error) {
+      await this.recordAudit({ id: `ai_${randomUUID()}`, kind: 'chat', profileId, model: provider.profile.model, messageCount: normalizedRequest.messages.length, inputChars, outcome: signal?.aborted ? 'cancelled' : 'failed', errorCategory: signal?.aborted ? 'cancelled' : 'provider', startedAt, durationMs: Math.round(performance.now() - started) })
+      throw error
+    }
   }
   defaultProfileId(): string {
     const profileId = this.project.getInfo()?.manifest.providerProfile
@@ -92,6 +115,7 @@ export class AiService {
     return profileId
   }
   async stream(profileId: string, request: ChatRequest, onEvent: (event: ChatEvent) => void, jobId?: string, auditContext?: { agentId?: string; contextRecipeId?: string }): Promise<() => void> {
+    this.consumeRequest(profileId)
     const normalizedRequest = await this.normalizeRequest(profileId, request)
     const controller = new AbortController()
     const started = performance.now(); const startedAt = new Date().toISOString(); let recorded = false
@@ -125,10 +149,14 @@ export class AiService {
     }, jobId, { agentId, contextRecipeId: context?.manifest.recipeId })
   }
   cancelStream(jobId: string): void { this.streams.get(jobId)?.() }
+  private consumeRequest(profileId: string): void {
+    const decision = this.requestLimiter.tryConsume(profileId)
+    if (!decision.allowed) throw new DomainError('RATE_LIMITED', 'AI 请求过于频繁，请稍后再试', { retryable: true, details: { retryAfterMs: decision.retryAfterMs } })
+  }
   private async provider(profileId: string) {
     const profiles = await this.listProfiles()
     const configured = profiles.find((item) => item.id === profileId)
-    const profile = configured ?? (profileId === 'profile_mock'
+    const profile = configured ?? (this.allowDeterministicMock && profileId === 'profile_mock'
       ? { id: 'profile_mock', name: 'Deterministic Mock', kind: 'mock' as const, model: 'mock-model', temperature: 0, maxOutputTokens: 4096 }
       : undefined)
     if (!profile) throw new DomainError('PROJECT_NOT_FOUND', `Provider profile 不存在: ${profileId}`)

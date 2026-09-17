@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { markdownToHtml } from '../lib/markdown'
+import { useUiText } from '../lib/i18n'
 
 export function sanitizeMarkdownHtml(html: string): string {
   return html
@@ -11,6 +12,7 @@ export function sanitizeMarkdownHtml(html: string): string {
 }
 
 export function MarkdownMessage({ content }: { content: string }) {
+  const uiText = useUiText()
   const [copied, setCopied] = useState(false)
   const html = sanitizeMarkdownHtml(markdownToHtml(content))
   const copy = async () => {
@@ -18,6 +20,6 @@ export function MarkdownMessage({ content }: { content: string }) {
   }
   return <div className="chat-markdown-message">
     <div className="chat-markdown-content" dangerouslySetInnerHTML={{ __html: html }} />
-    <button type="button" className="chat-copy-button" onClick={() => void copy()}>{copied ? '已复制' : '复制内容'}</button>
+    <button type="button" className="chat-copy-button" onClick={() => void copy()}>{copied ? uiText('chatCopied') : uiText('chatActionCopy')}</button>
   </div>
 }

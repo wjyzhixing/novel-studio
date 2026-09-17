@@ -1,0 +1,11 @@
+schemaVersion: 1
+scenes:
+  - id: scene_001
+    chapterRelPath: chapters/001-录音里的求救声.md
+    title: 匿名包裹与第一次回放
+    order: 0
+    startParagraph: 0
+    endParagraph: 12
+    summary: 林岚在回声修复店收到没有寄件人的磁带，并从噪声里听见父亲关于灯塔下第二个门的警告。
+    createdAt: 2026-09-15T00:00:00.000Z
+    updatedAt: 2026-09-15T00:00:00.000Z

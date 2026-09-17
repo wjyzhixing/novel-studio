@@ -16,6 +16,7 @@ export type AppErrorCode =
   | 'IO_ERROR'
   | 'DB_ERROR'
   | 'VALIDATION_FAILED'
+  | 'RATE_LIMITED'
   | 'CANCELED'
 
 export interface AppError {

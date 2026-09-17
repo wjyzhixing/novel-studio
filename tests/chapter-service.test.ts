@@ -7,6 +7,7 @@ import { ChapterService } from '../src/main/services/chapter-service'
 import { RecentProjectsStore } from '../src/main/services/recent-projects'
 import { DomainError } from '../src/main/services/errors'
 import { makeTempRoot } from './helpers'
+import { ExtensionRegistry } from '../src/main/services/extension-registry'
 
 let projectRoot: string
 let chapters: ChapterService
@@ -185,6 +186,23 @@ describe('ChapterService.rebuildIndex', () => {
 })
 
 describe('ChapterService.exportAll', () => {
+  it('uses registered importer and exporter extensions for non-built-in formats', async () => {
+    const registry = new ExtensionRegistry()
+    const imported = { title: '扩展章节', markdown: '# 扩展章节\n\n来自扩展。' }
+    registry.registerImporter({ id: 'importer-novelbook', label: 'Novel Book', extensions: ['.novelbook'], import: async () => imported })
+    registry.registerExporter({ id: 'exporter-novel-json', label: 'Novel JSON', format: 'novel-json', export: async (items) => JSON.stringify(items) })
+    const extendedChapters = new ChapterService(project, undefined, undefined, registry)
+    const source = join(projectRoot, '..', 'source.novelbook')
+    await writeFile(source, 'extension source')
+
+    const created = await extendedChapters.importFile(source)
+    expect(created.title).toBe('扩展章节')
+    const destination = join(projectRoot, '..', 'chapters.novel-json')
+    const result = await extendedChapters.exportAll('novel-json' as never, destination)
+    expect(result.chapterCount).toBe(1)
+    expect(await readFile(destination, 'utf8')).toContain('来自扩展')
+  })
+
   it('embeds project image assets in standalone HTML exports', async () => {
     const chapter = await chapters.create('带插图章节')
     await mkdir(join(projectRoot, 'assets/scenes'), { recursive: true })
@@ -195,6 +213,22 @@ describe('ChapterService.exportAll', () => {
     const html = await readFile(destination, 'utf8')
     expect(html).toContain('<img')
     expect(html).toContain('data:image/png;base64,iVBORw==')
+  })
+
+  it('optionally strips image metadata from standalone HTML exports', async () => {
+    const chapter = await chapters.create('清理元数据')
+    await mkdir(join(projectRoot, 'assets/scenes'), { recursive: true })
+    const png = Buffer.from([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0, 0, 0, 5, 0x74, 0x45, 0x58, 0x74, 0x41, 0x42, 0x43, 0x44, 0x45, 0, 0, 0, 0,
+      0, 0, 0, 0, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82
+    ])
+    await writeFile(join(projectRoot, 'assets/scenes/metadata.png'), png)
+    await chapters.save(chapter.relPath, '# 清理元数据\n\n![场景](../assets/scenes/metadata.png)\n')
+    const destination = join(projectRoot, '..', 'clean-metadata.html')
+    await chapters.exportAll('html', destination, { cleanImageMetadata: true })
+    const html = await readFile(destination, 'utf8')
+    expect(Buffer.from(html.match(/base64,([^"']+)/)?.[1] ?? '', 'base64').toString('latin1')).not.toContain('tEXt')
   })
 })
 

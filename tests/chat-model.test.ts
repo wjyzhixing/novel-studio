@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatDraftTarget, chatMessageActions, classifyChatAction, classifyChatPrompt, parseStructuredCanonProposal } from '../src/renderer/src/lib/chat'
+import { chatDraftTarget, chatMessageActionIds, chatMessageActions, classifyChatAction, classifyChatPrompt, parseStructuredCanonProposal } from '../src/renderer/src/lib/chat'
 
 describe('chat message action model', () => {
   it('keeps explanations read-only and turns drafts into explicit edit actions', () => {
@@ -16,6 +16,10 @@ describe('chat message action model', () => {
     expect(chatDraftTarget('应用到选区', '')).toBe('missing-selection')
     expect(chatDraftTarget('追加到章节', '')).toBe('chapter')
     expect(chatDraftTarget('替换章节', '林默抬头')).toBe('chapter')
+  })
+
+  it('exposes stable action ids independent of localized labels', () => {
+    expect(chatMessageActionIds('draft')).toEqual(['copy', 'quote', 'preview-diff', 'apply-selection', 'append-chapter', 'replace-chapter', 'continue', 'regenerate', 'reject'])
   })
 
   it('classifies the same prompt consistently in both Chat surfaces', () => {
@@ -38,5 +42,6 @@ describe('chat message action model', () => {
       subjectId: 'ent_luo', predicate: 'role', object: '守门人', validFrom: null, validTo: null, confidence: 1,
       source: { documentId: 'chapters/001.md', range: [0, 0] }
     })
+    expect(parseStructuredCanonProposal('{"id":"fact_existing","subjectId":"ent_luo","predicate":"role","object":"守门人"}', 'chapters/001.md')).toMatchObject({ id: 'fact_existing', subjectId: 'ent_luo' })
   })
 })

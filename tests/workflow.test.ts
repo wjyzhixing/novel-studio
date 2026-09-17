@@ -19,6 +19,12 @@ describe('workflow validation', () => {
   })
   it('rejects cycles', () => { const workflow = base([{ id: 'e1', source: 'a', sourcePort: 'out', target: 'b', targetPort: 'in' }, { id: 'e2', source: 'b', sourcePort: 'out', target: 'a', targetPort: 'in' }]); expect(validateWorkflow(workflow).some((issue) => issue.code === 'CYCLE')).toBe(true) })
 
+  it('rejects nodes that have no Main-owned executor', () => {
+    const workflow = base([])
+    workflow.nodes[0] = { ...workflow.nodes[0], type: 'community.execute-code' }
+    expect(validateWorkflow(workflow)).toContainEqual(expect.objectContaining({ code: 'UNKNOWN_NODE', nodeId: 'a' }))
+  })
+
   it('saves, reads and lists a valid .novelflow file', async () => {
     const root = await makeTempRoot(); const project = new ProjectService(new RecentProjectsStore(join(root, 'recent.json')))
     await project.create(join(root, 'novel'), 'Workflow file test'); const service = new WorkflowService(project)

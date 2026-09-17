@@ -19,14 +19,17 @@ export function sanitizeEvidence(input = {}) {
 
 export async function runStep({ id, label, run, timeoutMs = 10_000 }) {
   const started = Date.now()
+  let timeoutHandle
   try {
     const result = await Promise.race([
       Promise.resolve().then(run),
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`步骤超时 (${timeoutMs}ms)`)), timeoutMs))
+      new Promise((_, reject) => { timeoutHandle = setTimeout(() => reject(new Error(`步骤超时 (${timeoutMs}ms)`)), timeoutMs) })
     ])
     return Object.freeze({ id, label, status: 'passed', durationMs: Date.now() - started, evidence: sanitizeEvidence(result) })
   } catch (error) {
     return Object.freeze({ id, label, status: 'failed', durationMs: Date.now() - started, evidence: {}, error: String(error instanceof Error ? error.message : error).slice(0, 240) })
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle)
   }
 }
 

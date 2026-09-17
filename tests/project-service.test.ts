@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { ProjectService } from '../src/main/services/project-service'
+import { ProjectService, migrateManifestFile } from '../src/main/services/project-service'
 import { RecentProjectsStore } from '../src/main/services/recent-projects'
 import { DomainError } from '../src/main/services/errors'
 import { makeTempRoot } from './helpers'
@@ -13,6 +13,20 @@ function makeService(recentsFile: string): ProjectService {
 }
 
 describe('ProjectService', () => {
+  it('restores the original manifest when a file schema migration fails', async () => {
+    const root = await makeTempRoot()
+    const manifestPath = join(root, 'novel.yaml')
+    const original = `projectId: proj_legacy\ntitle: 旧项目\nlanguage: zh-CN\ncreatedAt: '2026-01-01T00:00:00.000Z'\nschemaVersion: 1\ndefaultWorkflow: null\nartDirection: ''\nproviderProfile: null\n`
+    await writeFile(manifestPath, original)
+
+    await expect(migrateManifestFile(manifestPath, [
+      { fromVersion: 1, toVersion: 2, name: 'rename-title', up: (manifest) => ({ ...manifest, title: '迁移中的项目' }) },
+      { fromVersion: 2, toVersion: 3, name: 'broken-migration', up: () => { throw new Error('fixture manifest migration failure') } }
+    ])).rejects.toThrow('broken-migration')
+
+    expect(await readFile(manifestPath, 'utf8')).toBe(original)
+  })
+
   it('creates a project with the full blueprint §6 scaffold', async () => {
     const root = await makeTempRoot()
     const empty = join(root, 'my-novel')
@@ -31,6 +45,7 @@ describe('ProjectService', () => {
     expect(existsSync(join(empty, 'story/volumes.yaml'))).toBe(true)
     expect(parse(await readFile(join(empty, 'story/volumes.yaml'), 'utf8'))).toEqual({ version: 1, volumes: [] })
     expect(await readFile(join(empty, 'chapters/001-第一章.md'), 'utf8')).toBe('# 第一章\n\n')
+    expect(await readFile(join(empty, 'prompts/agent-image-prompt.md'), 'utf8')).toContain('Image Prompt Agent')
     expect(existsSync(join(empty, 'DIRECTORY.md'))).toBe(true)
     expect(existsSync(join(empty, '.novel/project.db'))).toBe(true)
     expect(await readFile(join(empty, '.gitignore'), 'utf8')).toContain('.novel/')
@@ -57,6 +72,170 @@ describe('ProjectService', () => {
     const repaired = await svc.repairIndexes()
     expect(repaired.assets).toBe(1)
     expect((svc.database.raw.prepare('SELECT COUNT(*) AS count FROM assets').get() as { count: number }).count).toBe(1)
+    await svc.close()
+  })
+
+  it('reports structurally valid but dangling relation and timeline source references', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'dangling-source-references')
+    const svc = makeService(join(root, 'recents.json'))
+    await svc.create(dir, '引用完整性')
+    await writeFile(join(dir, 'story/relations.yaml'), `relations:
+  - id: rel_missing_entity
+    fromId: ent_missing_from
+    relationType: knows
+    toId: ent_missing_to
+    metadata: {}
+`)
+    await writeFile(join(dir, 'story/timeline.yaml'), `events:
+  - id: evt_missing_refs
+    title: 悬空事件
+    at: null
+    description: ''
+    chapterRelPath: chapters/999-不存在.md
+    entityIds:
+      - ent_missing
+    locationId: ent_missing_location
+    causes: ''
+    effects: ''
+`)
+
+    const report = await svc.checkIntegrity()
+    expect(report.invalidSourceFiles).toEqual(expect.arrayContaining([
+      'story/relations.yaml#relations[0].fromId',
+      'story/relations.yaml#relations[0].toId',
+      'story/timeline.yaml#events[0].chapterRelPath',
+      'story/timeline.yaml#events[0].entityIds[0]',
+      'story/timeline.yaml#events[0].locationId'
+    ]))
+    const repaired = await svc.repairIndexes()
+    expect(repaired.invalidSourceFiles).toEqual(expect.arrayContaining([
+      'story/relations.yaml#relations[0].fromId',
+      'story/relations.yaml#relations[0].toId',
+      'story/timeline.yaml#events[0].chapterRelPath',
+      'story/timeline.yaml#events[0].entityIds[0]',
+      'story/timeline.yaml#events[0].locationId'
+    ]))
+    expect(repaired.invalidSourceDetails).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'story/relations.yaml', issues: expect.arrayContaining(['relations[0].fromId', 'relations[0].toId']) }),
+      expect.objectContaining({ path: 'story/timeline.yaml', issues: expect.arrayContaining(['events[0].chapterRelPath', 'events[0].entityIds[0]', 'events[0].locationId']) })
+    ]))
+    await svc.close()
+  })
+
+  it('reports asset sidecars whose metadata points to a missing image file', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'dangling-asset-source')
+    const svc = makeService(join(root, 'recents.json'))
+    await svc.create(dir, '图片引用完整性')
+    await writeFile(join(dir, 'assets/scenes/asset_missing-image.yaml'), `assetId: asset_missing-image
+relPath: assets/scenes/asset_missing-image.png
+mimeType: image/png
+provider: fixture
+model: fixture
+prompt: missing image
+references: []
+createdAt: 2026-01-01T00:00:00.000Z
+`)
+
+    const report = await svc.checkIntegrity()
+    expect(report.invalidSourceFiles).toContain('assets/scenes/asset_missing-image.yaml#relPath')
+    const repaired = await svc.repairIndexes()
+    expect(repaired.invalidSourceFiles).toContain('assets/scenes/asset_missing-image.yaml#relPath')
+    await svc.close()
+  })
+
+  it('preserves malformed entity sources and reports them during index repair', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'malformed-entity-source')
+    const svc = makeService(join(root, 'recents.json'))
+    await svc.create(dir, '损坏实体源')
+    const sourcePath = join(dir, 'characters/entity-broken.yaml')
+    const original = 'id: ent_broken\nname: [无法闭合\n'
+    await writeFile(sourcePath, original)
+
+    const report = await svc.checkIntegrity()
+    expect(report.invalidSourceFiles).toContain('characters/entity-broken.yaml')
+
+    const repaired = await svc.repairIndexes()
+    expect(repaired.invalidSourceFiles).toContain('characters/entity-broken.yaml')
+    expect(repaired.invalidSourceDetails).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'characters/entity-broken.yaml', issues: expect.arrayContaining(['schema validation failed']) })
+    ]))
+    expect(await readFile(sourcePath, 'utf8')).toBe(original)
+    expect((svc.database.raw.prepare('SELECT COUNT(*) AS count FROM entities').get() as { count: number }).count).toBe(0)
+    await svc.close()
+  })
+
+  it('reports malformed relation and timeline lists without aborting index repair', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'malformed-story-sources')
+    const svc = makeService(join(root, 'recents.json'))
+    await svc.create(dir, '损坏故事源')
+    await writeFile(join(dir, 'story/relations.yaml'), 'relations:\n  - id: rel_broken\n    metadata: [\n')
+    await writeFile(join(dir, 'story/timeline.yaml'), 'events:\n  - id: evt_broken\n    title: [\n')
+
+    const report = await svc.checkIntegrity()
+    expect(report.invalidSourceFiles).toEqual(expect.arrayContaining(['story/relations.yaml', 'story/timeline.yaml']))
+
+    const repaired = await svc.repairIndexes()
+    expect(repaired.invalidSourceFiles).toEqual(expect.arrayContaining(['story/relations.yaml', 'story/timeline.yaml']))
+    expect(await readFile(join(dir, 'story/relations.yaml'), 'utf8')).toContain('metadata: [')
+    expect(await readFile(join(dir, 'story/timeline.yaml'), 'utf8')).toContain('title: [')
+    await svc.close()
+  })
+
+  it('reports invalid Story Bible artifacts with identity and validation details', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'invalid-artifact-details')
+    const svc = makeService(join(root, 'recents.json'))
+    await svc.create(dir, '异常设定报告')
+    const sourcePath = join(dir, 'story/artifacts.yaml')
+    const original = `artifacts:\n  - id: art_broken\n    kind: foreshadowing\n    title: 未完成伏笔\n    fields:\n      setup: 已出现\n      status: invalid-status\n    notes: 保留原文\n`
+    await writeFile(sourcePath, original)
+
+    const report = await svc.checkIntegrity()
+    expect(report.invalidStoryArtifactDetails).toEqual([expect.objectContaining({ id: 'art_broken', kind: 'foreshadowing', title: '未完成伏笔', issues: expect.arrayContaining([expect.stringContaining('fields')]) })])
+    expect(report.invalidStoryArtifacts).toBe(1)
+
+    const repaired = await svc.repairIndexes()
+    expect(repaired.invalidStoryArtifactDetails).toEqual([expect.objectContaining({ id: 'art_broken', title: '未完成伏笔' })])
+    expect(repaired.invalidStoryArtifacts).toBe(1)
+    expect(await readFile(sourcePath, 'utf8')).toBe(original)
+    await svc.close()
+  })
+
+  it('reports and restores a missing volumes source with the safe default schema', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'missing-volumes-source')
+    const svc = makeService(join(root, 'recents.json'))
+    const info = await svc.create(dir, '缺失卷文件')
+    await (await import('node:fs/promises')).unlink(join(info.rootPath, 'story/volumes.yaml'))
+
+    const report = await svc.checkIntegrity()
+    expect(report.missingFiles).toContain('story/volumes.yaml')
+
+    const repaired = await svc.repairIndexes()
+    expect(repaired.restoredSources).toContain('story/volumes.yaml')
+    expect(parse(await readFile(join(info.rootPath, 'story/volumes.yaml'), 'utf8'))).toEqual({ version: 1, volumes: [] })
+    await svc.close()
+  })
+
+  it('reports a malformed volumes source during integrity repair without overwriting it', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'malformed-volumes-source')
+    const svc = makeService(join(root, 'recents.json'))
+    const info = await svc.create(dir, '损坏卷文件')
+    const original = 'version: 1\nvolumes:\n  - id: [无法闭合\n'
+    await (await import('node:fs/promises')).writeFile(join(info.rootPath, 'story/volumes.yaml'), original)
+
+    const report = await svc.checkIntegrity()
+    expect(report.invalidSourceFiles).toContain('story/volumes.yaml')
+
+    const repaired = await svc.repairIndexes()
+    expect(repaired.invalidSourceFiles).toContain('story/volumes.yaml')
+    expect(repaired.invalidSourceDetails).toEqual(expect.arrayContaining([expect.objectContaining({ path: 'story/volumes.yaml' })]))
+    expect(await readFile(join(info.rootPath, 'story/volumes.yaml'), 'utf8')).toBe(original)
     await svc.close()
   })
 
@@ -88,6 +267,19 @@ describe('ProjectService', () => {
     const recents = await new RecentProjectsStore(recentsFile).list()
     expect(recents[0].path).toBe(canonicalDir)
     await svc2.close()
+  })
+
+  it('restores a default first chapter when an older project has no chapters', async () => {
+    const root = await makeTempRoot()
+    const dir = join(root, 'empty-legacy')
+    const svc = makeService(join(root, 'recents.json'))
+    await svc.create(dir, 'Untitled')
+    await svc.close()
+    await (await import('node:fs/promises')).unlink(join(dir, 'chapters/001-第一章.md'))
+
+    await svc.open(dir)
+    expect(await readFile(join(dir, 'chapters/001-第一章.md'), 'utf8')).toBe('# 第一章\n\n')
+    await svc.close()
   })
 
   it('persists Art Direction in the project manifest', async () => {
@@ -152,12 +344,27 @@ describe('ProjectService', () => {
     expect(() => svc.database).toThrow(DomainError)
   })
 
+  it('keeps the project context when database close fails', async () => {
+    const root = await makeTempRoot()
+    const svc = makeService(join(root, 'r.json'))
+    await svc.create(join(root, 'close-failure'), '关闭失败')
+    const database = svc.database
+    const close = vi.spyOn(database, 'close').mockRejectedValueOnce(new Error('database is busy'))
+
+    await expect(svc.close()).rejects.toThrow('database is busy')
+    expect(svc.getInfo()?.manifest.title).toBe('关闭失败')
+
+    close.mockRestore()
+    await svc.close()
+  })
+
   it('seeds the reusable Little Cow story without touching workflows or assets', async () => {
     const root = await makeTempRoot()
     const dir = join(root, 'cow')
     const svc = makeService(join(root, 'r.json'))
     await svc.create(dir, '原项目')
     await writeFile(join(dir, 'chapters/099-old.md'), '# 旧章节\n\n旧内容')
+    svc.database.raw.prepare('INSERT INTO entities(id, kind, name, aliases_json, fields_json, notes, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?)').run('ent_old', 'character', '旧角色', '[]', '{}', '', new Date().toISOString())
     await writeFile(join(dir, 'assets/covers/keep.txt'), 'keep')
     const workflow = await readFile(join(dir, 'workflows/flow_builtin_novel.novelflow.json'), 'utf8')
 
@@ -173,6 +380,7 @@ describe('ProjectService', () => {
     expect(await readFile(join(dir, 'assets/covers/keep.txt'), 'utf8')).toBe('keep')
     expect(await readFile(join(dir, 'workflows/flow_builtin_novel.novelflow.json'), 'utf8')).toBe(workflow)
     expect(svc.database.raw.prepare('SELECT COUNT(*) AS count FROM entities').get()).toMatchObject({ count: 5 })
+    expect(svc.database.raw.prepare('SELECT COUNT(*) AS count FROM entities WHERE id = ?').get('ent_old')).toMatchObject({ count: 0 })
     expect(svc.database.raw.prepare('SELECT COUNT(*) AS count FROM timeline_events').get()).toMatchObject({ count: 4 })
     expect(svc.database.raw.prepare('SELECT COUNT(*) AS count FROM documents WHERE kind = \'chapter\'').get()).toMatchObject({ count: 3 })
     await svc.close()

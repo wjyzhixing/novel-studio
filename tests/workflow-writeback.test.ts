@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { approvedDraftFromInput, humanReviewOutput, isDraftOutput, markdownForChapterWrite, workflowCompletionFromState } from '../src/main/services/workflow-runtime-service'
+import { approvedDraftFromInput, findAppliedWorkflowWriteback, humanReviewOutput, isDraftOutput, markdownForChapterWrite, workflowCompletionFromState } from '../src/main/services/workflow-runtime-service'
+import type { Revision } from '../src/shared/revision'
 import type { WorkflowRun } from '../src/shared/runtime'
 
 describe('workflow chapter writeback', () => {
+  it('reuses the exact revision when a writeback retry already applied the same output', () => {
+    const revision: Revision = { id: 'rev_existing', relPath: 'chapters/001-a.md', actor: 'agent', source: 'workflow:run_1', original: 'old', replacement: 'new', createdAt: '2026-01-01T00:00:00.000Z' }
+    expect(findAppliedWorkflowWriteback([revision], 'run_1', 'chapters/001-a.md', 'new')).toEqual(revision)
+    expect(findAppliedWorkflowWriteback([revision], 'run_1', 'chapters/001-a.md', 'different')).toBeUndefined()
+    expect(findAppliedWorkflowWriteback([revision], 'run_2', 'chapters/001-a.md', 'new')).toBeUndefined()
+  })
+
   it('keeps the chapter heading and writes generated body text', () => {
     expect(markdownForChapterWrite('# 第一章\n\n旧正文\n', '第一章', '审核后的正文')).toBe('# 第一章\n\n审核后的正文\n')
   })
@@ -11,14 +19,14 @@ describe('workflow chapter writeback', () => {
     expect(markdownForChapterWrite('# 旧标题\n\n旧正文\n', '旧标题', '# 新标题\n\n新正文')).toBe('# 新标题\n\n新正文\n')
   })
 
-  it('exposes the upstream正文 directly to human review and writeback', () => {
+  it('requires an explicit human approval action before writeback', () => {
     expect(humanReviewOutput({ in: '审核正文' })).toBe('审核正文')
   })
 
   it('only recognises an explicit draft as writable workflow output', () => {
     const draft = { kind: 'draft' as const, content: '可写入的小说正文', mode: 'replace' as const, target: 'chapter' as const, sourceNode: 'writer' }
     expect(isDraftOutput(draft)).toBe(true)
-    expect(approvedDraftFromInput(draft)).toEqual(draft)
+    expect(approvedDraftFromInput(draft)).toBeUndefined()
     expect(approvedDraftFromInput({ action: 'approve', draft })).toEqual(draft)
     expect(approvedDraftFromInput({ action: 'reject', draft })).toBeUndefined()
     expect(isDraftOutput('写作习惯：保持克制叙事')).toBe(false)

@@ -59,14 +59,23 @@ export async function connectCdp(options = {}) {
   const fill = async (selector, value) => Boolean(await evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); if (!element) return false; const setter = Object.getOwnPropertyDescriptor(element.constructor.prototype, 'value')?.set; if (!setter) return false; setter.call(element, ${JSON.stringify(value)}); element.dispatchEvent(new Event('input', { bubbles: true })); element.dispatchEvent(new Event('change', { bubbles: true })); return true })()`))
   const drag = async (from, to, steps = 8) => {
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x, y: from.y })
-    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', clickCount: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: from.x, y: from.y, button: 'left', buttons: 1, clickCount: 1 })
     for (let index = 1; index <= steps; index += 1) {
       const progress = index / steps
-      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + (to.x - from.x) * progress, y: from.y + (to.y - from.y) * progress, button: 'left' })
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: from.x + (to.x - from.x) * progress, y: from.y + (to.y - from.y) * progress, button: 'left', buttons: 1 })
     }
-    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', clickCount: 1 })
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: to.x, y: to.y, button: 'left', buttons: 0, clickCount: 1 })
     return true
   }
-  const close = () => { socket.close(); for (const callback of pending.values()) callback.reject(new Error('CDP 已关闭')); pending.clear() }
+  const close = async () => {
+    for (const callback of pending.values()) callback.reject(new Error('CDP 已关闭'))
+    pending.clear()
+    if (socket.readyState === WebSocket.CLOSED) return
+    socket.close()
+    await Promise.race([
+      new Promise((resolveClose) => socket.addEventListener('close', resolveClose, { once: true })),
+      new Promise((resolveTimeout) => setTimeout(resolveTimeout, 1_000))
+    ])
+  }
   return Object.freeze({ evaluate, waitFor, click, fill, drag, close })
 }

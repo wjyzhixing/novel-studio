@@ -1,0 +1,8 @@
+projectId: proj_mist_harbor_letter
+title: 雾港来信
+language: zh-CN
+createdAt: 2026-09-15T00:00:00.000Z
+schemaVersion: 1
+defaultWorkflow: flow_my_authoring
+artDirection: 潮湿旧城的铅灰天光、修复店里的暖黄台灯与磁带噪声；都市悬疑写实，人物造型和道具保持连续。
+providerProfile: profile_guide_mock

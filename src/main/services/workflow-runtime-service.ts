@@ -3,9 +3,9 @@ import type { DraftOutput, HumanReviewAction, WorkflowRun } from '../../shared/r
 import type { WorkflowService } from './workflow-service'
 import { executeWorkflow } from './workflow-runtime'
 import { WorkflowRunStore } from './workflow-run-store'
-import { DomainError } from './errors'
+import { DomainError, redactSensitive } from './errors'
 import type { AiService } from './ai-service'
-import type { NodeExecutionResult } from '../../shared/runtime'
+import type { NodeExecutionResult, NodeInputEnvelope } from '../../shared/runtime'
 import type { AgentService } from './agent-service'
 import { agentIdSchema } from '../../shared/ai'
 import type { ChapterService } from './chapter-service'
@@ -18,11 +18,20 @@ import type { ImageService } from './image-service'
 import type { ImageResult, SceneProposal } from '../../shared/image'
 import { TaskQueue } from './task-queue'
 import type { RevisionService } from './revision-service'
+import type { ExtensionRegistry } from './extension-registry'
+import { BUILTIN_WORKFLOW_NODE_TYPES } from './workflow-validation'
+import type { Revision } from '../../shared/revision'
+import type { AuthoringProgressService } from './authoring-progress-service'
 
 export function markdownForChapterWrite(chapterMarkdown: string, chapterTitle: string, generated: string): string {
   const text = generated.trim()
   if (/^#{1,6}\s+/.test(text)) return `${text}\n`
   return `${chapterMarkdown.match(/^#{1,6}\s+.+$/m)?.[0] ?? `# ${chapterTitle}`}\n\n${text}\n`
+}
+
+export function findAppliedWorkflowWriteback(revisions: Revision[], runId: string, relPath: string, markdown: string): Revision | undefined {
+  const source = `workflow:${runId}`
+  return revisions.find((revision) => revision.relPath === relPath && revision.source === source && revision.replacement === markdown)
 }
 
 export function humanReviewOutput(input: unknown): unknown {
@@ -49,18 +58,29 @@ export function workflowCompletionFromState(state: WorkflowRun): { targetRelPath
   return { targetRelPath: value.relPath as string, revisionId: typeof value.revisionId === 'string' ? value.revisionId : undefined }
 }
 
+/** Keeps prompt compilation as an explicit, inspectable workflow boundary. */
+export function imagePromptFromInput(value: unknown): SceneProposal | undefined {
+  const proposal = readPort<SceneProposal>(value) ?? (value && typeof value === 'object' ? value as SceneProposal : undefined)
+  if (!proposal || typeof proposal.suggestedPrompt !== 'string' || !proposal.suggestedPrompt.trim()) return undefined
+  return {
+    ...proposal,
+    suggestedPrompt: proposal.suggestedPrompt.trim(),
+    negativePrompt: typeof proposal.negativePrompt === 'string' ? proposal.negativePrompt.trim() : '',
+    visualContext: Array.isArray(proposal.visualContext) ? proposal.visualContext.filter((item): item is string => typeof item === 'string') : []
+  }
+}
+
 function isLikelyDraftContent(content: string): boolean {
   const text = content.trim()
   if (!text || text.length > 200_000 || /^```/.test(text)) return false
-  return !/^(?:写作习惯|写作风格|定位信息|角色定位|确认说明|审核意见|审核结果|分析过程|改写建议|定位|确认|说明|习惯|要求|规则|提示|注意)\s*[:：]|^(?:好的|当然|下面是|以下是(?:改写|续写|扩写|缩写)?(?:后的)?正文)[，,:：]/im.test(text)
+  return !/^(?:写作习惯|写作风格|定位信息|角色定位|确认说明|审核意见|审核结果|分析过程|改写建议|定位|确认|说明|习惯|要求|规则|提示|注意)\s*[:：]|^(?:好的|当然|下面是|以下是(?:改写|续写|扩写|缩写)?(?:后的)?正文)[^\n]{0,80}[，,:：]/im.test(text)
 }
 
 export function approvedDraftFromInput(value: unknown): DraftOutput | undefined {
-  if (isDraftOutput(value)) return value
   if (!value || typeof value !== 'object') return undefined
   const action = value as HumanReviewAction
   if (action.action !== 'approve' && action.action !== 'edit') return undefined
-  return action.draft
+  return isDraftOutput(action.draft) ? action.draft : undefined
 }
 
 function toDraft(value: unknown, sourceNode: string): DraftOutput | undefined {
@@ -73,7 +93,7 @@ export class WorkflowRuntimeService {
   private readonly controllers = new Map<string, AbortController>()
   private readonly emitter = new EventEmitter()
   private readonly queue = new TaskQueue(2)
-  constructor(private readonly workflows: WorkflowService, private readonly runs: WorkflowRunStore, private readonly ai: AiService, private readonly chapters: ChapterService, private readonly context: ContextService, private readonly memory: MemoryService, private readonly images: ImageService, private readonly agents?: AgentService, private readonly revisions?: RevisionService) {}
+  constructor(private readonly workflows: WorkflowService, private readonly runs: WorkflowRunStore, private readonly ai: AiService, private readonly chapters: ChapterService, private readonly context: ContextService, private readonly memory: MemoryService, private readonly images: ImageService, private readonly agents?: AgentService, private readonly revisions?: RevisionService, private readonly extensions?: ExtensionRegistry, private readonly authoring?: Pick<AuthoringProgressService, 'markChapterStatus' | 'refresh' | 'saveChapterPlan'>) {}
   async run(workflowId: string, relPath: string, sceneId?: string): Promise<WorkflowRun> {
     const summary = (await this.workflows.list()).find((item) => item.id === workflowId || item.relPath === workflowId)
     if (!summary) throw new DomainError('PROJECT_NOT_FOUND', `Workflow 不存在: ${workflowId}`)
@@ -85,7 +105,9 @@ export class WorkflowRuntimeService {
     if (!summary) throw new DomainError('PROJECT_NOT_FOUND', `Workflow 不存在: ${workflowId}`)
     const workflow = await this.workflows.read(summary.relPath); const runId = `run_${randomUUID()}`
     await this.runs.ensureJob(runId, workflow.id)
-    void this.enqueueRun(workflow, relPath, runId, undefined, undefined, sceneId).catch((error) => this.emit({ runId, error: error instanceof Error ? error.message : String(error) }))
+    void this.enqueueRun(workflow, relPath, runId, undefined, undefined, sceneId).catch((error) => {
+      void this.persistBackgroundFailure(workflow, relPath, runId, sceneId, error)
+    })
     return runId
   }
   async retry(runId: string, relPath: string): Promise<string> {
@@ -105,8 +127,20 @@ export class WorkflowRuntimeService {
     return runId
   }
   onEvent(listener: (event: WorkflowRuntimeEvent) => void): () => void { this.emitter.on('event', listener); return () => this.emitter.off('event', listener) }
-  async listRuns(recover = true, summaries = false): Promise<WorkflowRun[]> { if (recover) await this.runs.recoverInterrupted(); return summaries ? this.runs.listSummaries() : this.runs.list() }
-  async listJobs(recover = true): Promise<import('../../shared/jobs').JobRecord[]> { if (recover) await this.runs.recoverInterrupted(); return this.runs.listJobs() }
+  async listRuns(recover = true, summaries = false): Promise<WorkflowRun[]> { if (recover) await this.runs.recoverInterrupted(this.controllers.keys()); return summaries ? this.runs.listSummaries() : this.runs.list() }
+  async listJobs(recover = true): Promise<import('../../shared/jobs').JobRecord[]> { if (recover) await this.runs.recoverInterrupted(this.controllers.keys()); return this.runs.listJobs() }
+  async cancelJob(jobId: string): Promise<null> {
+    const job = (await this.runs.listJobs(100)).find((item) => item.id === jobId)
+    if (!job) throw new DomainError('PROJECT_NOT_FOUND', `Job 不存在: ${jobId}`)
+    return this.cancel(job.refId)
+  }
+  async retryJob(jobId: string): Promise<string> {
+    const job = (await this.runs.listJobs(100)).find((item) => item.id === jobId)
+    if (!job) throw new DomainError('PROJECT_NOT_FOUND', `Job 不存在: ${jobId}`)
+    const state = await this.runs.get(job.refId)
+    if (!state?.relPath) throw new DomainError('VALIDATION_FAILED', 'Job 缺少章节路径，无法 Retry')
+    return this.retry(job.refId, state.relPath)
+  }
   async cancel(runId: string): Promise<null> {
     const controller = this.controllers.get(runId)
     if (!controller) throw new DomainError('PROJECT_NOT_FOUND', `Workflow run 不存在或已结束: ${runId}`)
@@ -153,8 +187,14 @@ export class WorkflowRuntimeService {
     if (typeof resumeInput === 'string' && resumeInput.trim()) return { action: 'edit', editedContent: resumeInput.trim(), draft: { ...original, content: resumeInput.trim(), mode: 'rewrite' } } satisfies HumanReviewAction
     return { action: 'approve', draft: original } satisfies HumanReviewAction
   }
-  private async executeNode(workflow: Awaited<ReturnType<WorkflowService['read']>>, nodeId: string, input: unknown, signal: AbortSignal, relPath?: string, runId?: string, sceneId?: string, inheritedContext?: ContextResult, config: Record<string, unknown> = {}, idempotencyKey?: string): Promise<NodeExecutionResult> {
+  private async executeNode(workflow: Awaited<ReturnType<WorkflowService['read']>>, nodeId: string, input: unknown, signal: AbortSignal, relPath?: string, runId?: string, sceneId?: string, inheritedContext?: ContextResult, config: Record<string, unknown> = {}, idempotencyKey?: string, inputEnvelope?: NodeInputEnvelope): Promise<NodeExecutionResult> {
     const node = workflow.nodes.find((candidate) => candidate.id === nodeId)
+    if (node && this.extensions && !BUILTIN_WORKFLOW_NODE_TYPES.has(node.type)) {
+      const extension = this.extensions.getWorkflowNode(node.type)
+      this.extensions.assertPermissionsGranted(extension.extensionId ?? '', extension.permissions ?? [])
+      const output = await extension.run(node, input, { runId: runId ?? '', signal })
+      return { status: 'succeeded', output, log: [`扩展节点 ${node.type} 已执行`] }
+    }
     if (node?.type === 'input.chapter') {
       if (!relPath) throw new DomainError('VALIDATION_FAILED', 'Workflow 需要当前章节作为输入')
       const chapter = await this.chapters.read(relPath)
@@ -169,12 +209,18 @@ export class WorkflowRuntimeService {
     if (node?.type === 'memory.extract') {
       if (!relPath) throw new DomainError('VALIDATION_FAILED', 'Memory 节点缺少章节路径')
       const proposals = await this.memory.extractFromChapter(this.ai.defaultProfileId(), relPath, runId)
+      await this.authoring?.refresh()
       return { status: 'succeeded', output: proposals, log: [`生成 ${proposals.length} 条 Canon Proposal`] }
     }
     if (node?.type === 'image.propose') {
       if (!relPath) throw new DomainError('VALIDATION_FAILED', 'Image Proposal 节点缺少章节路径')
       const proposal = await this.images.proposeScene(relPath, sceneId)
       return { status: 'succeeded', output: proposal, log: [`生成插图场景提案 ${proposal.id}`] }
+    }
+    if (node?.type === 'image.prompt') {
+      const proposal = imagePromptFromInput(input)
+      if (!proposal) throw new DomainError('VALIDATION_FAILED', 'Image Prompt 节点缺少有效的场景提案')
+      return { status: 'succeeded', output: proposal, log: [`图片提示词已编译：${proposal.suggestedPrompt.length} 字符`] }
     }
     if (node?.type === 'chapter.write') {
       if (!relPath) throw new DomainError('VALIDATION_FAILED', 'Write Back 节点缺少章节路径')
@@ -185,10 +231,16 @@ export class WorkflowRuntimeService {
       const draft = approvedDraftFromInput(value)
       if (!draft) throw new DomainError('VALIDATION_FAILED', 'Write Back 节点只接受已审核的正文草稿')
       const markdown = markdownForChapterWrite(chapter.markdown, chapter.title, draft.content)
+      const sourceRunId = runId ?? node.id
+      const existingRevision = this.revisions
+        ? findAppliedWorkflowWriteback(await this.revisions.list(relPath), sourceRunId, relPath, markdown)
+        : undefined
+      if (existingRevision) { await this.authoring?.markChapterStatus(relPath, 'approved', runId); return { status: 'succeeded', output: { relPath, markdown, revisionId: existingRevision.id }, log: ['正文写回已完成，复用已有 Revision'] } }
       const revision = this.revisions && markdown !== chapter.markdown
-        ? await this.revisions.create({ relPath, actor: 'agent', source: `workflow:${runId ?? node.id}`, original: chapter.markdown, replacement: markdown })
+        ? await this.revisions.create({ relPath, actor: 'agent', source: `workflow:${sourceRunId}`, original: chapter.markdown, replacement: markdown })
         : undefined
       await this.chapters.save(relPath, markdown)
+      await this.authoring?.markChapterStatus(relPath, 'approved', runId)
       return { status: 'succeeded', output: { relPath, markdown, revisionId: revision?.id }, log: [`正文已写回章节 ${relPath}`] }
     }
     if (node?.type === 'image.generate') {
@@ -226,19 +278,25 @@ export class WorkflowRuntimeService {
     if (node?.type === 'human.review') {
       const draft = toDraft(humanReviewOutput(input), node.id)
       if (!draft) throw new DomainError('VALIDATION_FAILED', 'Review 节点上游没有可审核的正文草稿')
+      await this.authoring?.markChapterStatus(relPath ?? '', 'review', runId)
       return { status: 'waiting_human', output: draft, log: ['等待人工 Review'] }
     }
     if (node?.type.startsWith('ai.')) {
       const parsed = agentIdSchema.safeParse(config.agent)
       const agentId = parsed.success ? parsed.data : 'writer'
       const context = inheritedContext ?? readPort<ContextResult>(input)
-      const messages = this.agents ? await this.agents.messages(agentId, JSON.stringify(input), context?.manifest ? context : undefined) : [{ role: 'user' as const, content: JSON.stringify({ input, context }) }]
+      const envelope = inputEnvelope ?? { value: input, ...(context === undefined ? {} : { context }), outputs: {} }
+      const serializedEnvelope = JSON.stringify(envelope)
+      const configuredPrompt = typeof config.prompt === 'string' ? config.prompt.trim() : ''
+      const userPrompt = configuredPrompt ? `${configuredPrompt}\n\n本节点输入（JSON）：\n${serializedEnvelope}` : serializedEnvelope
+      const messages = this.agents ? await this.agents.messages(agentId, userPrompt, context?.manifest ? context : undefined) : [{ role: 'user' as const, content: userPrompt }]
       const policy = this.agents?.policy(agentId)
       const result = await this.ai.chat(this.ai.defaultProfileId(), { messages, temperature: typeof config.temperature === 'number' ? config.temperature : policy?.temperature, maxOutputTokens: typeof config.maxOutputTokens === 'number' ? config.maxOutputTokens : policy?.maxOutputTokens }, signal)
       const profile = (await this.ai.listProfiles()).find((item) => item.id === this.ai.defaultProfileId())
       const cost = result.usage && profile ? calculateCost(result.usage, profile.inputTokenCostPerMillion, profile.outputTokenCostPerMillion) : undefined
       const output = agentId === 'writer' || agentId === 'rewrite' ? toDraft(result.text, node.id) : result.text
       if ((agentId === 'writer' || agentId === 'rewrite') && !output) throw new DomainError('VALIDATION_FAILED', 'Writer 输出包含说明性内容，未生成可写回的正文草稿')
+      if (agentId === 'plot-planner' && relPath) await this.authoring?.saveChapterPlan(relPath, result.text, runId)
       return { status: 'succeeded', output, diagnostics: { profileId: this.ai.defaultProfileId(), model: result.model, requestId: result.requestId, usage: result.usage, cost, context: context?.manifest ? { recipeId: context.manifest.recipeId, totalTokens: context.manifest.totalTokens, itemCount: context.manifest.items.length } : undefined }, log: [`${node.type} · ${agentId} · ${result.model}${policy ? ` · policy=${policy.contextRecipeId}` : ''}`] }
     }
     return { status: 'succeeded', output: input, log: [`${node?.type ?? 'utility'} executed`] }
@@ -256,13 +314,47 @@ export class WorkflowRuntimeService {
 
   private async executeRun(workflow: Awaited<ReturnType<WorkflowService['read']>>, relPath: string, runId = `run_${randomUUID()}`, initialState?: WorkflowRun, resumeInput?: unknown, controller = new AbortController(), sceneId?: string): Promise<WorkflowRun> {
     try {
-      const result = await executeWorkflow(workflow, (context) => this.executeNode(workflow, context.nodeId, context.input, context.signal, relPath, runId, sceneId, context.inheritedContext as ContextResult | undefined, context.config, context.idempotencyKey), { runId, relPath, sceneId, signal: controller.signal, initialState, resumeInput, resolveContext: findContextResult, retryForNode: (node) => { if (!node.type.startsWith('ai.')) return 0; const agent = agentIdSchema.safeParse(node.config.agent); return agent.success ? (this.agents?.policy(agent.data).maxRetries ?? 0) : 0 }, persist: async (state) => { await this.runs.save(state); this.emit({ runId, state }) } })
+    const result = await executeWorkflow(workflow, (context) => this.executeNode(workflow, context.nodeId, context.input, context.signal, relPath, runId, sceneId, context.inheritedContext as ContextResult | undefined, context.config, context.idempotencyKey, context.inputEnvelope), { runId, relPath, sceneId, signal: controller.signal, initialState, resumeInput, allowedNodeTypes: this.extensions?.snapshot().workflowNodes.map(({ type }) => type), sideEffectStore: this.runs, resolveContext: findContextResult, retryForNode: (node) => { if (!node.type.startsWith('ai.')) return 0; const agent = agentIdSchema.safeParse(node.config.agent); return agent.success ? (this.agents?.policy(agent.data).maxRetries ?? 0) : 0 }, persist: async (state) => { await this.runs.save(state); this.emit({ runId, state }) } })
       if (result.state.status === 'succeeded') {
         const completion = workflowCompletionFromState(result.state)
         if (completion) this.emit({ runId, completion })
       }
       return result.state
     } finally { /* enqueueRun owns controller lifecycle, including queued jobs */ }
+  }
+  private async persistBackgroundFailure(workflow: Awaited<ReturnType<WorkflowService['read']>>, relPath: string, runId: string, sceneId: string | undefined, error: unknown): Promise<void> {
+    const message = redactSensitive(error instanceof Error ? error.message : String(error))
+    const existing = await this.runs.get(runId).catch(() => null)
+    if (!existing) {
+      const now = new Date().toISOString()
+      const firstNode = workflow.nodes[0]
+      const nodes = Object.fromEntries(workflow.nodes.map((node) => {
+        const failed = node.id === firstNode?.id
+        return [node.id, {
+          nodeId: node.id,
+          status: failed ? 'failed' as const : 'pending' as const,
+          input: {},
+          attempts: 0,
+          log: failed ? [message] : [],
+          ...(failed ? { error: message, finishedAt: now, diagnostics: { errorCategory: 'validation' as const } } : {})
+        }]
+      }))
+      const failedState: WorkflowRun = {
+        id: runId,
+        workflowId: workflow.id,
+        relPath,
+        ...(sceneId ? { sceneId } : {}),
+        status: 'failed',
+        nodes,
+        outputs: {},
+        createdAt: now,
+        updatedAt: now
+      }
+      // The Job must leave queued even if validation failed before the normal
+      // runtime had a chance to create and persist its initial state.
+      await this.runs.save(failedState).catch(() => undefined)
+    }
+    this.emit({ runId, error: message })
   }
   private emit(event: WorkflowRuntimeEvent): void { this.emitter.emit('event', event) }
 }

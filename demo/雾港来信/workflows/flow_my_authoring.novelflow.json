@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "id": "flow_my_authoring",
+  "name": "我的创作流程",
+  "cyclePolicy": "reject",
+  "variables": [],
+  "nodes": [
+    { "id": "chapter-input", "type": "input.chapter", "label": "读取当前章节", "position": { "x": 80, "y": 80 }, "inputs": [], "outputs": [{ "id": "out", "type": "chapter", "required": false }], "config": {} },
+    { "id": "context", "type": "context.load", "label": "构建 Context", "position": { "x": 320, "y": 80 }, "inputs": [{ "id": "in", "type": "chapter", "required": true }], "outputs": [{ "id": "out", "type": "context", "required": false }], "config": {} },
+    { "id": "plan", "type": "ai.prompt", "label": "章节规划", "position": { "x": 560, "y": 80 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "instruction", "required": false }], "config": { "agent": "plot-planner", "prompt": "基于 Context 规划本章目标、冲突、转折、场景 beats 和结尾钩子。" } },
+    { "id": "write", "type": "ai.prompt", "label": "生成章节草稿", "position": { "x": 800, "y": 80 }, "inputs": [{ "id": "in", "type": "instruction", "required": true }], "outputs": [{ "id": "out", "type": "draft", "required": false }], "config": { "agent": "writer", "prompt": "按照规划写出本章中文正文，只输出可审核正文，不提前解决主谜团。" } },
+    { "id": "critic-character", "type": "ai.critic", "label": "人物一致性检查", "position": { "x": 1040, "y": 0 }, "inputs": [{ "id": "in", "type": "draft", "required": true }], "outputs": [{ "id": "out", "type": "review", "required": false }], "config": { "agent": "character-critic", "prompt": "检查人物目标、恐惧、秘密、关系和已知信息是否一致。" } },
+    { "id": "critic-logic", "type": "ai.critic", "label": "逻辑一致性检查", "position": { "x": 1040, "y": 160 }, "inputs": [{ "id": "in", "type": "draft", "required": true }], "outputs": [{ "id": "out", "type": "review", "required": false }], "config": { "agent": "logic-critic", "prompt": "检查因果、时间、空间、证据和信息释放是否自洽。" } },
+    { "id": "critic-style", "type": "ai.critic", "label": "文风一致性检查", "position": { "x": 1040, "y": 320 }, "inputs": [{ "id": "in", "type": "draft", "required": true }], "outputs": [{ "id": "out", "type": "review", "required": false }], "config": { "agent": "style-critic", "prompt": "检查视角、节奏、重复表达、感官细节和整体语气。" } },
+    { "id": "critic-merge", "type": "logic.merge", "label": "合并审阅意见", "position": { "x": 1280, "y": 160 }, "inputs": [{ "id": "character", "type": "any", "required": true }, { "id": "logic", "type": "any", "required": true }, { "id": "style", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} },
+    { "id": "rewrite", "type": "ai.prompt", "label": "按意见重写", "position": { "x": 1520, "y": 160 }, "inputs": [{ "id": "in", "type": "review", "required": true }], "outputs": [{ "id": "out", "type": "draft", "required": false }], "config": { "agent": "rewrite", "prompt": "综合审阅意见重写正文，只输出可审核正文，保留未揭示的主谜团和已确认事实。" } },
+    { "id": "review", "type": "human.review", "label": "人工审核", "position": { "x": 1760, "y": 160 }, "inputs": [{ "id": "in", "type": "draft", "required": true }], "outputs": [{ "id": "out", "type": "review-action", "required": false }], "config": {} },
+    { "id": "chapter-write", "type": "chapter.write", "label": "审核后写回章节", "position": { "x": 2000, "y": 160 }, "inputs": [{ "id": "in", "type": "review-action", "required": true }], "outputs": [{ "id": "out", "type": "chapter", "required": false }], "config": {} },
+    { "id": "memory", "type": "memory.extract", "label": "提取候选事实", "position": { "x": 2240, "y": 160 }, "inputs": [{ "id": "in", "type": "any", "required": true }], "outputs": [{ "id": "out", "type": "any", "required": false }], "config": {} }
+  ],
+  "edges": [
+    { "id": "edge-0-chapter-input-context", "source": "chapter-input", "sourcePort": "out", "target": "context", "targetPort": "in" },
+    { "id": "edge-1-context-plan", "source": "context", "sourcePort": "out", "target": "plan", "targetPort": "in" },
+    { "id": "edge-2-plan-write", "source": "plan", "sourcePort": "out", "target": "write", "targetPort": "in" },
+    { "id": "edge-3-write-critic-character", "source": "write", "sourcePort": "out", "target": "critic-character", "targetPort": "in" },
+    { "id": "edge-4-write-critic-logic", "source": "write", "sourcePort": "out", "target": "critic-logic", "targetPort": "in" },
+    { "id": "edge-5-write-critic-style", "source": "write", "sourcePort": "out", "target": "critic-style", "targetPort": "in" },
+    { "id": "edge-6-critic-character-critic-merge", "source": "critic-character", "sourcePort": "out", "target": "critic-merge", "targetPort": "character" },
+    { "id": "edge-7-critic-logic-critic-merge", "source": "critic-logic", "sourcePort": "out", "target": "critic-merge", "targetPort": "logic" },
+    { "id": "edge-8-critic-style-critic-merge", "source": "critic-style", "sourcePort": "out", "target": "critic-merge", "targetPort": "style" },
+    { "id": "edge-9-critic-merge-rewrite", "source": "critic-merge", "sourcePort": "out", "target": "rewrite", "targetPort": "in" },
+    { "id": "edge-10-rewrite-review", "source": "rewrite", "sourcePort": "out", "target": "review", "targetPort": "in" },
+    { "id": "edge-11-review-chapter-write", "source": "review", "sourcePort": "out", "target": "chapter-write", "targetPort": "in" },
+    { "id": "edge-12-chapter-write-memory", "source": "chapter-write", "sourcePort": "out", "target": "memory", "targetPort": "in" }
+  ]
+}

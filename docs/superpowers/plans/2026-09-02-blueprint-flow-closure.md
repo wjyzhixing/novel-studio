@@ -33,11 +33,11 @@
 - `image.select` pauses when no `assetId` is configured and resumes with a selected asset ID.
 - Run state preserves node input/output and remains retryable after failure.
 
-- [ ] Add the four image nodes and edges to `builtinNovelFlow()`; use `image.select` as the human gate and leave `image.insert` after it.
-- [ ] Make `image.select` accept a resume payload shaped as `{ assetId: string }` and validate that the asset belongs to the incoming generated list.
-- [ ] Persist the selected asset output before allowing `image.insert` to execute.
-- [ ] Add a runtime smoke fixture that executes through proposal/generation, pauses at selection, resumes with an asset ID, and asserts the Markdown reference and Revision exist.
-- [ ] Surface the waiting node and resume action in the right panel and developer details.
+- [x] Add the four image nodes and edges to `builtinNovelFlow()`; use `image.select` as the human gate and leave `image.insert` after it.
+- [x] Make `image.select` accept a resume payload shaped as `{ assetId: string }` and validate that the asset belongs to the incoming generated list.
+- [x] Persist the selected asset output before allowing `image.insert` to execute.
+- [x] Add a runtime smoke fixture that executes through proposal/generation, pauses at selection, resumes with an asset ID, and asserts the Markdown reference and Revision exist.
+- [x] Surface the waiting node and resume action in the right panel and developer details.
 
 ### Task 2: Strict image-provider request adaptation
 
@@ -52,10 +52,10 @@
 - OpenAI-compatible image adapters send only the provider-supported minimal body by default and preserve local negative prompt/variant metadata.
 - A mocked fetch boundary can assert the exact outgoing JSON without exposing a key.
 
-- [ ] Add a schema for safe image parameters (`size`, `quality`, `style`, `response_format`) with bounded values and optional provider options.
-- [ ] Normalize unsupported UI fields before sending; keep negative prompt and requested variant count in local provenance.
-- [ ] Handle base64 and URL responses, real MIME types, and redacted provider errors deterministically.
-- [ ] Add runtime request assertions for the strict minimal body and the persisted provenance.
+- [x] Add a schema for safe image parameters (`size`, `quality`, `style`, `response_format`) with bounded values and optional provider options.
+- [x] Normalize unsupported UI fields before sending; keep negative prompt and requested variant count in local provenance.
+- [x] Handle base64 and URL responses, real MIME types, and redacted provider errors deterministically.
+- [x] Add runtime request assertions for the strict minimal body and the persisted provenance.
 
 ### Task 3: Remove Mock ambiguity from normal Provider/Chat flow
 
@@ -70,10 +70,10 @@
 - A stale manifest profile is repaired to a configured profile and the repaired ID is reflected in the project state.
 - Mock remains available only as an explicit deterministic fixture option.
 
-- [ ] Replace renderer hardcoded `profile_mock` fallbacks with a single provider-selection helper/state.
-- [ ] Display profile name/model and an actionable configuration message when no real profile exists.
-- [ ] Keep `mock` selectable only when explicitly saved or used by runtime fixtures.
-- [ ] Add a runtime assertion that stale profile IDs converge to the first configured profile without persisting secrets.
+- [x] Replace renderer hardcoded `profile_mock` fallbacks with a single provider-selection helper/state.
+- [x] Display profile name/model and an actionable configuration message when no real profile exists.
+- [x] Keep `mock` selectable only when explicitly saved or used by runtime fixtures.
+- [x] Add a runtime assertion that stale profile IDs converge to the first configured profile without persisting secrets.
 
 ### Task 4: Markdown asset round-trip and user feedback
 
@@ -89,10 +89,10 @@
 - Editor hydrates asset IDs through IPC after chapter switch/reopen and never persists data URLs.
 - Insert/refresh/delete always emit visible status and leave no dangling Markdown reference after deletion.
 
-- [ ] Make Markdown conversion recognize image attributes regardless of DOM attribute order.
-- [ ] Hydrate all asset IDs through `image.readAsset`, with a visible broken-reference state when the asset is missing.
-- [ ] After insert/delete/refresh reload the chapter and asset list from Main rather than relying only on local state.
-- [ ] Route operation messages through the existing `role=status` surfaces and preserve errors with safe text.
+- [x] Make Markdown conversion recognize image attributes regardless of DOM attribute order.
+- [x] Hydrate all asset IDs through `image.readAsset`, with a visible broken-reference state when the asset is missing.
+- [x] After insert/delete/refresh reload the chapter and asset list from Main rather than relying only on local state.
+- [x] Route operation messages through the existing `role=status` surfaces and preserve errors with safe text.
 
 ### Task 5: Workflow Inspector completeness
 
@@ -108,10 +108,10 @@
 - Context manifest references are visible for AI nodes without exposing secrets or full API keys.
 - Human pause/resume and retry actions show a deterministic status message.
 
-- [ ] Add bounded/sanitized summaries for node input/output and error categories.
-- [ ] Persist context manifest metadata and provider request ID on AI/image nodes.
-- [ ] Render the details in Developer Panel and the compact right-panel status card.
-- [ ] Add a runtime smoke assertion for waiting, resumed, failed, and retried state transitions.
+- [x] Add bounded/sanitized summaries for node input/output and error categories.
+- [x] Persist context manifest metadata and provider request ID on AI/image nodes.
+- [x] Render the details in Developer Panel and the compact right-panel status card.
+- [x] Add a runtime smoke assertion for waiting, resumed, failed, and retried state transitions.
 
 ### Task 6: Verification and blueprint audit update
 
@@ -120,9 +120,10 @@
 - Modify: `scripts/verify-runtime.mjs`
 - Modify: `docs/release-readiness-checklist.md`
 
-- [ ] Run `npm run typecheck`.
-- [ ] Run `git diff --check`.
-- [ ] Run `node --check scripts/verify-runtime.mjs` and `node scripts/verify-runtime.mjs --long`.
-- [ ] Run `node scripts/release-preflight.mjs`.
-- [ ] Update each affected blueprint chapter with evidence, leaving unverified E2E/test/build claims explicitly incomplete.
+- [x] Run `npm run typecheck`.
+- [x] Run `git diff --check`.
+- [x] Run `node --check scripts/verify-runtime.mjs` and `node scripts/verify-runtime.mjs --long`.
+- [x] Run `node scripts/release-preflight.mjs`.
+- [x] Update each affected blueprint chapter with evidence, leaving unverified E2E/test/build claims explicitly incomplete.
 
+> Evidence (2026-09-04): runtime smoke and `--long` scale smoke passed, including built-in image selection/resume, strict provider request bodies, provider reconciliation, asset lifecycle, inspector summaries, and retry/wait transitions. `release-preflight` also passed. Cross-platform installer execution and real Electron UI installation remain separate unverified gates.

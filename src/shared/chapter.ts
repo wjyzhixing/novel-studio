@@ -27,7 +27,10 @@ export interface SearchHit {
 }
 
 export const exportFormats = ['markdown', 'plain', 'html'] as const
-export type ExportFormat = typeof exportFormats[number]
+export type ExportFormat = typeof exportFormats[number] | (string & {})
+export interface ExportOptions {
+  cleanImageMetadata?: boolean
+}
 
 export const chapterCreateInput = z.object({
   title: z.string().min(1).max(100)
@@ -60,7 +63,7 @@ export interface ChapterApiContract {
   saveNote(relPath: string, notes: string): Promise<Result<null>>
   search(query: string): Promise<Result<SearchHit[]>>
   importFile(sourcePath: string, title?: string): Promise<Result<ChapterMeta>>
-  exportAll(format: ExportFormat, destination: string): Promise<Result<{ destination: string; chapterCount: number }>>
+  exportAll(format: ExportFormat, destination: string, options?: ExportOptions): Promise<Result<{ destination: string; chapterCount: number }>>
 }
 
 export const CHAPTERS_DIR = 'chapters'

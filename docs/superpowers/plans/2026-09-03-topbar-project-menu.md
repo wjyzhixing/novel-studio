@@ -27,19 +27,19 @@
 - `BackupActions` accepts `action?: BackupAction | null` and `onActionHandled?: () => void`.
 - `BackupAction` is `'create' | 'incremental' | 'repair'`.
 
-- [ ] **Step 1: Add the public action type and controlled props**
+- [x] **Step 1: Add the public action type and controlled props**
 
 Add the union type and optional props without changing existing restore rendering.
 
-- [ ] **Step 2: Route a received action through existing handlers**
+- [x] **Step 2: Route a received action through existing handlers**
 
 Use an effect that invokes the matching existing function once, then calls `onActionHandled`; preserve the current inline buttons when `controls` remains enabled.
 
-- [ ] **Step 3: Replace topbar inline backup controls with the controlled component**
+- [x] **Step 3: Replace topbar inline backup controls with the controlled component**
 
 Keep one hidden/non-visual `BackupActions` instance in `App` wired to the project menu action and `setTopNotice`.
 
-- [ ] **Step 4: Run typecheck**
+- [x] **Step 4: Run typecheck**
 
 Run `npm run typecheck`; expected output is a successful TypeScript check.
 
@@ -53,19 +53,19 @@ Run `npm run typecheck`; expected output is a successful TypeScript check.
 - Project menu entries call `setBackupAction('create' | 'incremental' | 'repair')` and close the menu.
 - Right-panel toggle calls `setRightPanelCollapsed` and renders only a rail with the toggle button while collapsed.
 
-- [ ] **Step 1: Add menu state and keyboard/outside close behavior**
+- [x] **Step 1: Add menu state and keyboard/outside close behavior**
 
 Use a `projectMenuOpen` state, a wrapper ref, a pointer listener for outside clicks, and Escape handling that closes the menu without changing focus mode behavior.
 
-- [ ] **Step 2: Update topbar markup and icon placement**
+- [x] **Step 2: Update topbar markup and icon placement**
 
 Turn `.project-name` into a menu trigger with `aria-haspopup`/`aria-expanded`; render the three menu items below it. Render `PanelRightClose` when open and `PanelRightOpen` when collapsed immediately before the model button, with Chinese accessible labels.
 
-- [ ] **Step 3: Render the collapsed rail without RightPanel content**
+- [x] **Step 3: Render the collapsed rail without RightPanel content**
 
 Change the final workbench branch to render `.right-panel-collapsed-rail` containing only the toggle button when collapsed; render `RightPanel` only when expanded.
 
-- [ ] **Step 4: Add focused styles**
+- [x] **Step 4: Add focused styles**
 
 Position the project dropdown below the trigger, style menu items and the icon button consistently with the existing dark topbar, and make the collapsed rail 34px wide.
 
@@ -74,14 +74,14 @@ Position the project dropdown below the trigger, style menu items and the icon b
 **Files:**
 - Test: existing Vitest suite and static UI contract script.
 
-- [ ] **Step 1: Run the UI contract check**
+- [x] **Step 1: Run the UI contract check**
 
 Run `node scripts/verify-ui-contract.mjs`; expected result is all checks passing.
 
-- [ ] **Step 2: Run tests and build**
+- [x] **Step 2: Run tests and build**
 
 Run `npm test`, `npm run typecheck`, and `npm run build`; expected result is successful completion for all three commands.
 
-- [ ] **Step 3: Review the diff**
+- [x] **Step 3: Review the diff**
 
 Run `git diff --check` and inspect `git diff`; expected result is no whitespace errors and only the requested UI changes plus plan/spec documentation.

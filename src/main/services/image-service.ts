@@ -102,6 +102,7 @@ export class MockImageProvider implements ImageProvider {
 }
 
 export class ImageService {
+  private readonly inFlightGenerations = new Map<string, Promise<ImageResult[]>>()
   constructor(private readonly project: ProjectService, private readonly chapters: ChapterService, private readonly provider: ImageProvider = new MockImageProvider(), private readonly story?: StoryService, private readonly revisions?: RevisionService, private readonly scenes?: SceneService) {}
   private async profile(profileId?: string): Promise<ProviderProfile | undefined> {
     const raw = this.project.database.getSetting('ai.providerProfiles')
@@ -150,7 +151,18 @@ export class ImageService {
     if (request.idempotencyKey) {
       const existing = (await this.listAssets()).filter((asset) => asset.idempotencyKey === request.idempotencyKey)
       if (existing.length > 0) return existing
+      const running = this.inFlightGenerations.get(request.idempotencyKey)
+      if (running) return running
     }
+    const operation = this.generateFresh(request)
+    if (!request.idempotencyKey) return operation
+    this.inFlightGenerations.set(request.idempotencyKey, operation)
+    try { return await operation } finally {
+      if (this.inFlightGenerations.get(request.idempotencyKey) === operation) this.inFlightGenerations.delete(request.idempotencyKey)
+    }
+  }
+
+  private async generateFresh(request: ImageRequest): Promise<ImageResult[]> {
     const profile = await this.profile()
     const provider = profile?.kind === 'mock' ? new MockImageProvider() : this.provider
     const results = await provider.generate(request); const assets: ImageResult[] = []

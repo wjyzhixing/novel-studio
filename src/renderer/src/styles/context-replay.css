@@ -1,0 +1,4 @@
+.context-difference-summary{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:8px;padding-bottom:7px;border-bottom:1px solid #3b2f20;color:#c9c0d8}
+.context-difference-summary b{flex-basis:100%;color:#f2d49a;font-size:10px}
+.context-difference-summary span,.context-difference-summary small{padding:3px 5px;border:1px solid #4b3a27;border-radius:4px;color:#dca75b;font-size:9px}
+.context-difference-summary small{margin-left:auto;color:#c9c0d8}

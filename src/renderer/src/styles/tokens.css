@@ -1,0 +1,57 @@
+:root {
+  color-scheme: dark;
+  --ns-color-app: #0a0b10;
+  --ns-color-panel: #0e0f14;
+  --ns-color-surface: #111219;
+  --ns-color-surface-raised: #181920;
+  --ns-color-border: #252630;
+  --ns-color-border-strong: #343640;
+  --ns-color-text: #d9d9e2;
+  --ns-color-text-muted: #858692;
+  --ns-color-accent: #8c6eff;
+  --ns-color-accent-soft: #241b3c;
+  --ns-color-success: #4ccf7b;
+  --ns-color-warning: #e3b341;
+  --ns-color-danger: #ff6d64;
+  --ns-control-height: 30px;
+  --ns-radius-control: 7px;
+  --ns-motion-fast: 140ms ease;
+}
+
+/* Dark remains the desktop default. Light is an explicit palette so every
+ * token-aware surface can follow the OS without duplicating component rules. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ns-color-app: #f5f6f8;
+  --ns-color-panel: #ffffff;
+  --ns-color-surface: #ffffff;
+  --ns-color-surface-raised: #eef0f4;
+  --ns-color-border: #d7dbe3;
+  --ns-color-border-strong: #b9c0cc;
+  --ns-color-text: #20242d;
+  --ns-color-text-muted: #687180;
+  --ns-color-accent: #6846d8;
+  --ns-color-accent-soft: #eeeaff;
+  --ns-color-success: #197a45;
+  --ns-color-warning: #9a6500;
+  --ns-color-danger: #c43830;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --ns-color-app: #f5f6f8;
+    --ns-color-panel: #ffffff;
+    --ns-color-surface: #ffffff;
+    --ns-color-surface-raised: #eef0f4;
+    --ns-color-border: #d7dbe3;
+    --ns-color-border-strong: #b9c0cc;
+    --ns-color-text: #20242d;
+    --ns-color-text-muted: #687180;
+    --ns-color-accent: #6846d8;
+    --ns-color-accent-soft: #eeeaff;
+    --ns-color-success: #197a45;
+    --ns-color-warning: #9a6500;
+    --ns-color-danger: #c43830;
+  }
+}

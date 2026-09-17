@@ -1,0 +1,74 @@
+name: Package desktop installers
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows NSIS x64
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build Windows installer
+        run: pnpm dist:win:x64
+      - name: Verify Windows installer metadata
+        run: pnpm verify:artifacts -- --platform win
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: novel-studio-windows-x64
+          path: |
+            release/*.exe
+            release/latest.yml
+          if-no-files-found: error
+
+  macos:
+    name: macOS ARM64 DMG
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build macOS ARM64 installer
+        run: pnpm dist:mac:arm64
+      - name: Verify macOS installer metadata
+        run: pnpm verify:artifacts -- --platform mac
+      - name: Upload macOS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: novel-studio-macos-arm64
+          path: |
+            release/*.dmg
+            release/latest-mac.yml
+          if-no-files-found: error

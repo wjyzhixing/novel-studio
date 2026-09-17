@@ -15,6 +15,13 @@ import type { BackupApiContract } from '../shared/backup'
 import type { CheckpointApiContract } from '../shared/checkpoint'
 import type { SceneApiContract } from '../shared/scene'
 import type { VolumeApiContract } from '../shared/volume'
+import type { ExtensionApiContract } from '../shared/extensions'
+import type { TelemetryApiContract, SettingsApiContract, SecretApiContract } from '../shared/ipc'
+import type { CommunityWorkflowApiContract } from '../shared/community-workflow'
+import type { UpdateApiContract } from '../shared/update'
+import type { JobsApiContract } from '../shared/jobs'
+import type { AuthoringApiContract } from '../shared/authoring'
+import type { FullRevisionApiContract } from '../shared/authoring'
 
 /**
  * Minimal whitelist bridge (blueprint §5): no ipcRenderer passthrough,
@@ -37,7 +44,10 @@ const api = {
     ,pickArchiveSave: () => ipcRenderer.invoke(IPC.projectPickArchiveSave)
     ,pickArchiveOpen: () => ipcRenderer.invoke(IPC.projectPickArchiveOpen)
     ,checkIntegrity: () => ipcRenderer.invoke(IPC.projectCheckIntegrity)
-    ,pickTextImport: () => ipcRenderer.invoke(IPC.projectPickTextImport)
+    ,pickTextImport: (extensions?: readonly string[]) => ipcRenderer.invoke(IPC.projectPickTextImport, extensions)
+    ,pickExtensionPackage: () => ipcRenderer.invoke(IPC.projectPickExtensionPackage)
+    ,pickCommunityWorkflowOpen: () => ipcRenderer.invoke(IPC.projectPickCommunityWorkflowOpen)
+    ,pickCommunityWorkflowSave: () => ipcRenderer.invoke(IPC.projectPickCommunityWorkflowSave)
     ,pickExportSave: (format: import('../shared/chapter').ExportFormat) => ipcRenderer.invoke(IPC.projectPickExportSave, format)
     ,pickDiagnosticsSave: () => ipcRenderer.invoke(IPC.projectPickDiagnosticsSave)
   },
@@ -54,7 +64,7 @@ const api = {
     ,readNote: (relPath: string) => ipcRenderer.invoke(IPC.chapterReadNote, relPath)
     ,saveNote: (relPath: string, notes: string) => ipcRenderer.invoke(IPC.chapterSaveNote, { relPath, notes })
     ,importFile: (sourcePath: string, title?: string) => ipcRenderer.invoke(IPC.chapterImport, { sourcePath, title })
-    ,exportAll: (format: import('../shared/chapter').ExportFormat, destination: string) => ipcRenderer.invoke(IPC.chapterExport, { format, destination })
+    ,exportAll: (format: import('../shared/chapter').ExportFormat, destination: string, options?: import('../shared/chapter').ExportOptions) => ipcRenderer.invoke(IPC.chapterExport, { format, destination, options })
   },
   scene: {
     list: (chapterRelPath: string) => ipcRenderer.invoke(IPC.sceneList, chapterRelPath),
@@ -72,6 +82,19 @@ const api = {
     unassignChapter: (chapterRelPath: string) => ipcRenderer.invoke(IPC.volumeUnassignChapter, chapterRelPath),
     reorder: (volumeIds: string[]) => ipcRenderer.invoke(IPC.volumeReorder, { volumeIds })
   } satisfies VolumeApiContract,
+  authoring: {
+    get: () => ipcRenderer.invoke(IPC.authoringGet),
+    initialize: (input: Parameters<AuthoringApiContract['initialize']>[0]) => ipcRenderer.invoke(IPC.authoringInitialize, input),
+    refresh: () => ipcRenderer.invoke(IPC.authoringRefresh),
+    save: (progress: Parameters<AuthoringApiContract['save']>[0]) => ipcRenderer.invoke(IPC.authoringSave, progress),
+    saveFoundation: (input: Parameters<AuthoringApiContract['saveFoundation']>[0]) => ipcRenderer.invoke(IPC.authoringSaveFoundation, input),
+    markExported: (destination: Parameters<AuthoringApiContract['markExported']>[0]) => ipcRenderer.invoke(IPC.authoringMarkExported, destination),
+    review: () => ipcRenderer.invoke(IPC.authoringReview)
+  } satisfies AuthoringApiContract,
+  fullRevision: {
+    prepare: () => ipcRenderer.invoke(IPC.fullRevisionPrepare),
+    approve: (reportId: Parameters<FullRevisionApiContract['approve']>[0]) => ipcRenderer.invoke(IPC.fullRevisionApprove, reportId)
+  } satisfies FullRevisionApiContract,
   search: {
     project: (query: string) => ipcRenderer.invoke(IPC.searchProject, { query })
   },
@@ -87,6 +110,7 @@ const api = {
     saveRelation: (input: Parameters<StoryApiContract['saveRelation']>[0]) => ipcRenderer.invoke(IPC.storySaveRelation, input),
     deleteRelation: (id: string) => ipcRenderer.invoke(IPC.storyDeleteRelation, id),
     search: (query: string) => ipcRenderer.invoke(IPC.storySearch, query),
+    searchAll: (query: string) => ipcRenderer.invoke(IPC.storySearchAll, query),
     listArtifacts: (kind?: Parameters<StoryApiContract['listArtifacts']>[0]) => ipcRenderer.invoke(IPC.storyListArtifacts, kind),
     saveArtifact: (input: Parameters<StoryApiContract['saveArtifact']>[0]) => ipcRenderer.invoke(IPC.storySaveArtifact, input),
     deleteArtifact: (id: string) => ipcRenderer.invoke(IPC.storyDeleteArtifact, id),
@@ -117,6 +141,10 @@ const api = {
     check: (fact: Parameters<CanonApiContract['check']>[0]) => ipcRenderer.invoke(IPC.canonCheck, fact),
     listProposals: () => ipcRenderer.invoke(IPC.canonListProposals),
     proposeFact: (fact: Parameters<CanonApiContract['proposeFact']>[0]) => ipcRenderer.invoke(IPC.canonProposeFact, fact),
+    proposeFactUpdate: (fact: Parameters<CanonApiContract['proposeFactUpdate']>[0]) => ipcRenderer.invoke(IPC.canonProposeFactUpdate, fact),
+    proposeRelationUpdate: (relation: Parameters<CanonApiContract['proposeRelationUpdate']>[0]) => ipcRenderer.invoke(IPC.canonProposeRelation, relation),
+    proposeTimelineAdd: (event: Parameters<CanonApiContract['proposeTimelineAdd']>[0]) => ipcRenderer.invoke(IPC.canonProposeTimeline, event),
+    proposeForeshadowingAdd: (artifact: Parameters<CanonApiContract['proposeForeshadowingAdd']>[0]) => ipcRenderer.invoke(IPC.canonProposeForeshadowing, artifact),
     rejectProposal: (id: string) => ipcRenderer.invoke(IPC.canonReject, id),
     applyProposal: (id: string) => ipcRenderer.invoke(IPC.canonApply, id),
     revertProposal: (id: string) => ipcRenderer.invoke(IPC.canonRevert, id),
@@ -129,6 +157,11 @@ const api = {
     save: (workflow: Parameters<WorkflowApiContract['save']>[0]) => ipcRenderer.invoke(IPC.workflowSave, workflow),
     validate: (workflow: Parameters<WorkflowApiContract['validate']>[0]) => ipcRenderer.invoke(IPC.workflowValidate, workflow)
   },
+  communityWorkflow: {
+    preview: (sourcePath: string) => ipcRenderer.invoke(IPC.communityWorkflowPreview, sourcePath),
+    install: (sourcePath: string, approvedPermissions = []) => ipcRenderer.invoke(IPC.communityWorkflowInstall, { sourcePath, approvedPermissions }),
+    export: (workflow: Parameters<CommunityWorkflowApiContract['export']>[0], destination: string) => ipcRenderer.invoke(IPC.communityWorkflowExport, { workflow, destination })
+  } satisfies CommunityWorkflowApiContract,
   workflowRuntime: {
     start: (workflowId: string, relPath: string, sceneId?: string) => ipcRenderer.invoke(IPC.workflowRuntimeStart, { workflowId, relPath, sceneId }),
     run: (workflowId: string, relPath: string, sceneId?: string) => ipcRenderer.invoke(IPC.workflowRuntimeRun, { workflowId, relPath, sceneId }),
@@ -139,8 +172,15 @@ const api = {
     onEvent: (listener: (event: WorkflowRuntimeEvent) => void) => { const handler = (_event: Electron.IpcRendererEvent, value: WorkflowRuntimeEvent) => listener(value); ipcRenderer.on(IPC.workflowRuntimeEvent, handler); return () => ipcRenderer.removeListener(IPC.workflowRuntimeEvent, handler) }
   },
   jobs: {
-    list: (recover = true) => ipcRenderer.invoke(IPC.jobsList, recover)
-  },
+    list: (recover = true) => ipcRenderer.invoke(IPC.jobsList, recover),
+    cancel: (jobId: string) => ipcRenderer.invoke(IPC.jobsCancel, jobId),
+    retry: (jobId: string) => ipcRenderer.invoke(IPC.jobsRetry, jobId),
+    onEvent: (listener: Parameters<JobsApiContract['onEvent']>[0]) => {
+      const handler = (_event: Electron.IpcRendererEvent, value: WorkflowRuntimeEvent) => listener(value)
+      ipcRenderer.on(IPC.jobsEvent, handler)
+      return () => ipcRenderer.removeListener(IPC.jobsEvent, handler)
+    }
+  } satisfies JobsApiContract,
   image: {
     proposeScene: (relPath: string, sceneId?: string) => ipcRenderer.invoke(IPC.imageProposeScene, { relPath, sceneId }),
     generate: (request: Parameters<ImageApiContract['generate']>[0]) => ipcRenderer.invoke(IPC.imageGenerate, request),
@@ -163,8 +203,42 @@ const api = {
     restore: (id: string) => ipcRenderer.invoke(IPC.checkpointRestore, id)
   } satisfies CheckpointApiContract,
   diagnostics: {
-    export: (destination: string) => ipcRenderer.invoke(IPC.diagnosticsExport, destination)
+    export: (destination: string) => ipcRenderer.invoke(IPC.diagnosticsExport, destination),
+    exportCompressed: (destination: string) => ipcRenderer.invoke(IPC.diagnosticsExportCompressed, destination)
   },
+  extensions: {
+    list: () => ipcRenderer.invoke(IPC.extensionList),
+    permissionPreview: (id: string) => ipcRenderer.invoke(IPC.extensionPermissionPreview, id),
+    preview: (sourcePath: string) => ipcRenderer.invoke(IPC.extensionPreview, sourcePath),
+    install: (sourcePath: string, approvedPermissions = []) => ipcRenderer.invoke(IPC.extensionInstall, { sourcePath, approvedPermissions }),
+    uninstall: (id: string) => ipcRenderer.invoke(IPC.extensionUninstall, id),
+    rollback: (id: string) => ipcRenderer.invoke(IPC.extensionRollback, id),
+    trustStatus: () => ipcRenderer.invoke(IPC.extensionTrustStatus)
+  } satisfies ExtensionApiContract,
+  telemetry: {
+    getStatus: () => ipcRenderer.invoke(IPC.telemetryGetStatus),
+    setConsent: (enabled: boolean) => ipcRenderer.invoke(IPC.telemetrySetConsent, enabled)
+  } satisfies TelemetryApiContract,
+  settings: {
+    get: (key: string) => ipcRenderer.invoke(IPC.settingsGet, key),
+    set: (key: string, value: string) => ipcRenderer.invoke(IPC.settingsSet, { key, value })
+  } satisfies SettingsApiContract,
+  secret: {
+    has: (key: string) => ipcRenderer.invoke(IPC.secretHas, key),
+    set: (key: string, value: string) => ipcRenderer.invoke(IPC.secretSet, { key, value }),
+    remove: (key: string) => ipcRenderer.invoke(IPC.secretRemove, key)
+  } satisfies SecretApiContract,
+  update: {
+    check: () => ipcRenderer.invoke(IPC.updateCheck),
+    download: () => ipcRenderer.invoke(IPC.updateDownload),
+    install: () => ipcRenderer.invoke(IPC.updateInstall),
+    cancel: () => ipcRenderer.invoke(IPC.updateCancel),
+    onEvent: (listener: Parameters<UpdateApiContract['onEvent']>[0]) => {
+      const handler = (_event: Electron.IpcRendererEvent, value: Parameters<UpdateApiContract['onEvent']>[0] extends (event: infer E) => void ? E : never) => listener(value)
+      ipcRenderer.on(IPC.updateEvent, handler)
+      return () => ipcRenderer.removeListener(IPC.updateEvent, handler)
+    }
+  } satisfies UpdateApiContract,
   revision: {
     list: (relPath?: string) => ipcRenderer.invoke(IPC.revisionList, relPath),
     get: (id: string) => ipcRenderer.invoke(IPC.revisionGet, id),

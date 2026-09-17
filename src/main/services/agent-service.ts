@@ -10,7 +10,8 @@ const FALLBACK_PROMPTS: Record<AgentId, string> = {
   'style-critic': '你是文风 Critic，检查重复、节奏、视角和表达质量。',
   rewrite: '你是 Rewrite Agent，只输出可替换正文，不解释，不添加 Markdown 代码围栏。',
   'memory-extractor': '你是 Memory Extractor，提取可审计的人物、关系、事件和事实，不擅自写入 Canon。',
-  'visual-director': '你是 Visual Director，把章节内容整理成可执行的镜头、构图和画面提示词。'
+  'visual-director': '你是 Visual Director，把章节内容整理成可执行的镜头、构图和画面提示词。',
+  'image-prompt': '你是 Image Prompt Agent，把场景、角色视觉身份、地点和全书 Art Direction 编译成稳定、可执行的图片模型提示词。只输出结构化图片提示词，不生成图片。'
 }
 
 const DEFAULT_POLICIES: Record<AgentId, Omit<AgentPolicy, 'agentId'>> = {
@@ -21,7 +22,8 @@ const DEFAULT_POLICIES: Record<AgentId, Omit<AgentPolicy, 'agentId'>> = {
   'style-critic': { temperature: 0.4, maxOutputTokens: 1800, contextRecipeId: 'chapter-review', tools: ['context.read'], outputSchema: 'CriticResult@1', maxRetries: 1 },
   rewrite: { temperature: 0.7, maxOutputTokens: 5000, contextRecipeId: 'chapter-rewrite', tools: ['context.read', 'canon.read'], maxRetries: 1 },
   'memory-extractor': { temperature: 0.1, maxOutputTokens: 2500, contextRecipeId: 'memory-extraction', tools: ['context.read', 'canon.read'], outputSchema: 'MemoryExtraction@1', maxRetries: 2 },
-  'visual-director': { temperature: 0.6, maxOutputTokens: 2200, contextRecipeId: 'visual-direction', tools: ['context.read', 'story.read'], outputSchema: 'SceneProposal@1', maxRetries: 1 }
+  'visual-director': { temperature: 0.6, maxOutputTokens: 2200, contextRecipeId: 'visual-direction', tools: ['context.read', 'story.read'], outputSchema: 'SceneProposal@1', maxRetries: 1 },
+  'image-prompt': { temperature: 0.5, maxOutputTokens: 1800, contextRecipeId: 'image-prompting', tools: ['context.read', 'story.read'], outputSchema: 'ImagePrompt@1', maxRetries: 1 }
 }
 
 export class AgentService {

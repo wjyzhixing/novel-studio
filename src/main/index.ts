@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, safeStorage } from 'electron'
+import { app, BrowserWindow, dialog, Menu, safeStorage, shell } from 'electron'
 import { join } from 'node:path'
 import { registerIpc } from './ipc'
 import { ProjectService } from './services/project-service'
@@ -24,10 +24,25 @@ import { MemoryService } from './services/memory-service'
 import { EmbeddingIndexService } from './services/embedding-index-service'
 import { SceneService } from './services/scene-service'
 import { VolumeService } from './services/volume-service'
+import { ExtensionRegistry } from './services/extension-registry'
+import { ExtensionPackageStore } from './services/extension-package-store'
+import { readTrustedExtensionKeys } from './services/extension-package'
+import { TelemetryService } from './services/telemetry-service'
+import { CommunityWorkflowService } from './services/community-workflow-service'
+import { UpdateService } from './services/update-service'
+import { AuthoringProgressService } from './services/authoring-progress-service'
+import { AuthoringReviewService } from './services/authoring-review-service'
+import { FullRevisionService } from './services/full-revision-service'
+import { scheduleBackgroundUpdateCheck } from './services/update-background-check'
+import { redactLogMessage } from './services/errors'
 import { IPC } from '../shared/ipc'
 import type { ExportFormat } from '../shared/chapter'
+import { updateEndpointSchema } from '../shared/update'
+import { fetchUpdateManifest, UpdateManifestFetchError } from './services/update-manifest-fetch'
 
 app.setName('Novel Studio')
+
+let disposeBackgroundUpdateCheck: (() => void) | null = null
 
 // electron-vite runs the main bundle from out/main during development while
 // electron-builder keeps resources at the application root. Resolve from the
@@ -88,10 +103,10 @@ function createWindow(): void {
   // not copied to the main-process log.
   if (!app.isPackaged) {
     win.webContents.on('did-fail-load', (_e, code, desc, url) => {
-      console.error(`[did-fail-load] ${code} ${desc.slice(0, 240)} ${url.startsWith('file://') || url.startsWith('http://localhost:') ? url : '[redacted-url]'}`)
+      console.error(redactLogMessage(`[did-fail-load] ${code} ${desc} ${url.startsWith('file://') || url.startsWith('http://localhost:') ? url : '[redacted-url]'}`))
     })
     win.webContents.on('render-process-gone', (_e, details) => {
-      console.error(`[render-process-gone] ${details.reason}`)
+      console.error(redactLogMessage(`[render-process-gone] ${details.reason}`))
     })
   }
 }
@@ -108,15 +123,16 @@ function installApplicationMenu(): void {
   ]))
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock) {
     app.dock.setIcon(applicationIconPath())
   }
   const recents = new RecentProjectsStore(join(app.getPath('userData'), 'recent-projects.json'))
   const projectService = new ProjectService(recents)
+  const extensionRegistry = new ExtensionRegistry()
   const volumeService = new VolumeService(projectService)
   let revisionService!: RevisionService
-  const chapterService = new ChapterService(projectService, (input) => revisionService.create(input), volumeService)
+  const chapterService = new ChapterService(projectService, (input) => revisionService.create(input), volumeService, extensionRegistry)
   const sceneService = new SceneService(projectService)
   const storyService = new StoryService(projectService)
   const promptService = new PromptService(projectService)
@@ -124,20 +140,64 @@ app.whenReady().then(() => {
   const secretStore = new SafeStorageSecretStore(safeStorage, join(app.getPath('userData'), 'provider-secrets.json'))
   const aiService = new AiService(projectService, secretStore)
   const embeddingIndex = new EmbeddingIndexService(projectService, chapterService, aiService)
-  const canonService = new CanonService(projectService)
+  const canonService = new CanonService(projectService, storyService)
+  const authoringProgressService = new AuthoringProgressService(projectService, chapterService, volumeService, canonService)
+  const authoringReviewService = new AuthoringReviewService(authoringProgressService, projectService, canonService)
+  const fullRevisionService = new FullRevisionService(authoringProgressService, projectService, canonService, storyService, chapterService)
   revisionService = new RevisionService(projectService, chapterService)
   const contextService = new ContextService(projectService, chapterService, storyService, canonService, embeddingIndex, sceneService)
   const memoryService = new MemoryService(chapterService, contextService, aiService, agentService, canonService)
   const aiEditService = new AiEditService(chapterService, aiService, revisionService, promptService, contextService, agentService)
   const workflowService = new WorkflowService(projectService)
   const imageService = new ImageService(projectService, chapterService, new OpenAICompatibleImageProvider(projectService, secretStore), storyService, revisionService, sceneService)
-  const workflowRuntime = new WorkflowRuntimeService(workflowService, new WorkflowRunStore(projectService), aiService, chapterService, contextService, memoryService, imageService, agentService, revisionService)
-  workflowRuntime.onEvent((event) => { for (const win of BrowserWindow.getAllWindows()) win.webContents.send(IPC.workflowRuntimeEvent, event) })
+  const workflowRuntime = new WorkflowRuntimeService(workflowService, new WorkflowRunStore(projectService), aiService, chapterService, contextService, memoryService, imageService, agentService, revisionService, extensionRegistry, authoringProgressService)
+  workflowRuntime.onEvent((event) => {
+    for (const win of BrowserWindow.getAllWindows()) {
+      win.webContents.send(IPC.workflowRuntimeEvent, event)
+      win.webContents.send(IPC.jobsEvent, event)
+    }
+  })
   const backupService = new BackupService(projectService)
   const checkpointService = new CheckpointService(projectService)
   const diagnosticsService = new DiagnosticsService(projectService, new WorkflowRunStore(projectService))
+  const trustedKeyPath = app.isPackaged
+    ? join(process.resourcesPath, 'assets', 'trusted-extension-keys.json')
+    : join(__dirname, '../../assets/trusted-extension-keys.json')
+  let trustedKeys = [] as Awaited<ReturnType<typeof readTrustedExtensionKeys>>
+  try {
+    trustedKeys = await readTrustedExtensionKeys(trustedKeyPath)
+  } catch (error) {
+    console.error(redactLogMessage(`[extensions] trusted publisher configuration unavailable: ${error instanceof Error ? error.message : 'invalid configuration'}`))
+  }
+  const extensionPackageStore = new ExtensionPackageStore(join(app.getPath('userData'), 'extensions'), extensionRegistry, trustedKeys)
+  const communityWorkflowService = new CommunityWorkflowService(projectService, extensionRegistry)
+  const telemetryService = new TelemetryService(join(app.getPath('userData'), 'telemetry-consent.json'))
+  const updateManifestUrl = process.env['NOVEL_STUDIO_UPDATE_MANIFEST_URL']
+  const updateService = new UpdateService(
+    {
+      currentVersion: app.getVersion(),
+      channel: process.env['NOVEL_STUDIO_UPDATE_CHANNEL'] === 'beta' ? 'beta' : 'stable',
+      platform: process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux',
+      arch: process.arch === 'arm64' ? 'arm64' : 'x64'
+    },
+    async (signal) => {
+      if (!updateManifestUrl) throw new UpdateManifestFetchError('configuration', '未配置更新源')
+      const endpoint = updateEndpointSchema.parse(updateManifestUrl)
+      return fetchUpdateManifest(endpoint, fetch, signal)
+    },
+    fetch,
+    join(app.getPath('userData'), 'updates'),
+    trustedKeys,
+    async (destination) => shell.openPath(destination)
+  )
+  void telemetryService.record('app_started', { platform: process.platform, arch: process.arch }).catch(() => { /* optional telemetry must never block startup */ })
+  try {
+    await extensionPackageStore.load()
+  } catch (error) {
+    console.error(redactLogMessage(`[extensions] installed package recovery skipped: ${error instanceof Error ? error.message : 'invalid package'}`))
+  }
 
-  registerIpc(projectService, recents, chapterService, storyService, aiService, aiEditService, contextService, canonService, workflowService, workflowRuntime, memoryService, imageService, backupService, revisionService, checkpointService, diagnosticsService, sceneService, volumeService, {
+  registerIpc(projectService, recents, chapterService, storyService, aiService, aiEditService, contextService, canonService, workflowService, workflowRuntime, memoryService, imageService, backupService, revisionService, checkpointService, diagnosticsService, sceneService, volumeService, authoringProgressService, authoringReviewService, fullRevisionService, extensionRegistry, extensionPackageStore, telemetryService, communityWorkflowService, updateService, {
     pickDirectory: async () => {
       const result = await dialog.showOpenDialog({
         properties: ['openDirectory', 'createDirectory'],
@@ -153,17 +213,31 @@ app.whenReady().then(() => {
       const result = await dialog.showOpenDialog({ title: '选择 Novel Studio 备份', properties: ['openFile'], filters: [{ name: 'ZIP Archive', extensions: ['zip'] }] })
       return result.canceled ? null : (result.filePaths[0] ?? null)
     },
-    pickTextImport: async () => {
-      const result = await dialog.showOpenDialog({ title: '导入章节', properties: ['openFile'], filters: [{ name: 'Markdown / Text', extensions: ['md', 'markdown', 'txt'] }] })
+    pickTextImport: async (extensions = []) => {
+      const customExtensions = extensions.filter((extension) => !['md', 'markdown', 'txt'].includes(extension.toLowerCase()))
+      const result = await dialog.showOpenDialog({ title: '导入章节', properties: ['openFile'], filters: [{ name: 'Markdown / Text', extensions: ['md', 'markdown', 'txt', ...customExtensions] }] })
       return result.canceled ? null : (result.filePaths[0] ?? null)
     },
     pickImageImport: async () => {
       const result = await dialog.showOpenDialog({ title: '导入图片', properties: ['openFile'], filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }] })
       return result.canceled ? null : (result.filePaths[0] ?? null)
     },
+    pickExtensionPackage: async () => {
+      const result = await dialog.showOpenDialog({ title: '安装扩展包', properties: ['openFile'], filters: [{ name: 'Extension manifest', extensions: ['json'] }] })
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    },
+    pickCommunityWorkflowOpen: async () => {
+      const result = await dialog.showOpenDialog({ title: '导入 Community Workflow', properties: ['openFile'], filters: [{ name: 'Novel Studio Workflow', extensions: ['novelflow'] }] })
+      return result.canceled ? null : (result.filePaths[0] ?? null)
+    },
+    pickCommunityWorkflowSave: async () => {
+      const result = await dialog.showSaveDialog({ title: '导出 Community Workflow', defaultPath: 'community-workflow.novelflow.json', filters: [{ name: 'Novel Studio Workflow', extensions: ['json'] }] })
+      return result.canceled ? null : (result.filePath ?? null)
+    },
     pickExportSave: async (format: ExportFormat) => {
-      const extension = format === 'markdown' ? 'md' : format === 'plain' ? 'txt' : 'html'
-      const result = await dialog.showSaveDialog({ title: `导出全部章节（${format}）`, defaultPath: `novel-studio-export.${extension}`, filters: [{ name: format === 'html' ? 'HTML' : format === 'plain' ? 'Plain Text' : 'Markdown', extensions: [extension] }] })
+      const extension = format === 'markdown' ? 'md' : format === 'plain' ? 'txt' : format === 'html' ? 'html' : format
+      const label = format === 'html' ? 'HTML' : format === 'plain' ? 'Plain Text' : format === 'markdown' ? 'Markdown' : `Extension: ${format}`
+      const result = await dialog.showSaveDialog({ title: `导出全部章节（${format}）`, defaultPath: `novel-studio-export.${extension}`, filters: [{ name: label, extensions: [extension] }] })
       return result.canceled ? null : (result.filePath ?? null)
     },
     pickDiagnosticsSave: async () => {
@@ -175,6 +249,10 @@ app.whenReady().then(() => {
 
   installApplicationMenu()
   createWindow()
+  disposeBackgroundUpdateCheck?.()
+  disposeBackgroundUpdateCheck = scheduleBackgroundUpdateCheck(updateService, {
+    enabled: Boolean(updateManifestUrl)
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -183,4 +261,9 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  disposeBackgroundUpdateCheck?.()
+  disposeBackgroundUpdateCheck = null
 })

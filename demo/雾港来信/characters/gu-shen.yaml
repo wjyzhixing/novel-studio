@@ -1,0 +1,9 @@
+id: ent_gu_shen
+name: 顾深
+aliases: [顾叔]
+role: reluctant-ally
+goal: 阻止旧港区的隐秘证据再次伤害无辜者
+fear: 林岚发现他曾协助林成隐藏一段录音
+secret: 他知道灯塔地下通道的入口，却从未告诉任何人
+relationships: 林岚是他想保护又无法替她决定的人，林成是旧日合作者
+notes: 港务维修承包商，寡言，熟悉潮汐和旧城结构。

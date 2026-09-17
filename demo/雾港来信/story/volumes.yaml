@@ -1,0 +1,28 @@
+version: 1
+volumes:
+  - id: volume_first
+    title: 第一卷 噪声抵达
+    order: 0
+    chapterRelPaths:
+      - chapters/001-录音里的求救声.md
+      - chapters/002-没有寄件人的包裹.md
+      - chapters/003-回放噪声的人.md
+      - chapters/004-潮线以下.md
+      - chapters/005-修复一段沉默.md
+      - chapters/006-父亲的借据.md
+      - chapters/007-雾港不记录夜晚.md
+    createdAt: 2026-09-15T00:00:00.000Z
+    updatedAt: 2026-09-15T00:00:00.000Z
+  - id: volume_second
+    title: 第二卷 旧城回声
+    order: 1
+    chapterRelPaths:
+      - chapters/008-顾深的条件.md
+      - chapters/009-第二个门.md
+      - chapters/010-失真的证词.md
+      - chapters/011-谁在保存真相.md
+      - chapters/012-潮水进门.md
+      - chapters/013-回放之前.md
+      - chapters/014-雾散之后.md
+    createdAt: 2026-09-15T00:00:00.000Z
+    updatedAt: 2026-09-15T00:00:00.000Z

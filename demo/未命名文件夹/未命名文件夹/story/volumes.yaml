@@ -6,12 +6,12 @@ volumes:
     chapterRelPaths:
       - chapters/002-小牛的休息.md
       - chapters/001-小牛的冒险.md
-      - chapters/003-小牛的笑容.md
     createdAt: 2026-09-03T10:26:08.050Z
-    updatedAt: 2026-09-03T11:51:23.716Z
+    updatedAt: 2026-09-04T10:15:49.209Z
   - id: volume_7c38a730-df9f-4c2a-a6c9-907a3fe6a8e1
-    title: 测试2
+    title: 第二卷
     order: 1
-    chapterRelPaths: []
+    chapterRelPaths:
+      - chapters/003-小牛的笑容.md
     createdAt: 2026-09-03T10:26:30.251Z
-    updatedAt: 2026-09-03T11:51:23.716Z
+    updatedAt: 2026-09-04T10:15:49.209Z

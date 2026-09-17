@@ -5,6 +5,20 @@ import { fileURLToPath } from 'node:url'
 
 const DEFAULT_OPTIONS = Object.freeze({ port: 5173, rendererHost: '127.0.0.1' })
 
+export function getStableElectronPaths(projectRoot = process.cwd(), platform = process.platform) {
+  const electronRoot = resolve(projectRoot, 'node_modules/electron')
+  const nativeRelativePath = platform === 'darwin'
+    ? 'dist/Electron.app/Contents/MacOS/Electron'
+    : platform === 'win32'
+      ? 'dist/electron.exe'
+      : 'dist/electron'
+  return Object.freeze({
+    electronBinary: resolve(electronRoot, nativeRelativePath),
+    mainEntry: resolve(projectRoot, 'out/main/index.js'),
+    preloadEntry: resolve(projectRoot, 'out/preload/index.cjs')
+  })
+}
+
 export function listeningPids(port = DEFAULT_OPTIONS.port) {
   try {
     const output = execFileSync('lsof', ['-tiTCP:' + port, '-sTCP:LISTEN'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
@@ -23,6 +37,19 @@ export function stopExistingNovelDevProcesses(port = DEFAULT_OPTIONS.port) {
   for (const pid of listeningPids(port)) if (isNovelDevProcess(pid)) process.kill(pid, 'SIGTERM')
 }
 
+export async function waitForProcessExit(child, timeoutMs = 5_000) {
+  if (!child || child.exitCode !== null) return
+  const exited = new Promise((resolveExit) => child.once('exit', resolveExit))
+  await Promise.race([
+    exited,
+    new Promise((resolveTimeout) => setTimeout(resolveTimeout, timeoutMs))
+  ])
+  if (child.exitCode === null) {
+    child.kill('SIGKILL')
+    await Promise.race([exited, new Promise((resolveTimeout) => setTimeout(resolveTimeout, 1_000))])
+  }
+}
+
 export async function waitForRenderer(rendererUrl, timeoutMs = 8_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -35,28 +62,31 @@ export async function waitForRenderer(rendererUrl, timeoutMs = 8_000) {
 export async function startStableElectron(options = {}) {
   const config = { ...DEFAULT_OPTIONS, ...options }
   const rendererUrl = `http://${config.rendererHost}:${config.port}`
-  const electronBinary = resolve('node_modules/electron/dist/Electron.app/Contents/MacOS/Electron')
-  const mainEntry = resolve('out/main/index.js')
-  const preloadEntry = resolve('out/preload/index.cjs')
-  if (![electronBinary, mainEntry, preloadEntry].every(existsSync)) throw new Error('稳定 Electron 入口缺少 out 产物，请先使用开发入口生成主进程/preload产物')
+  const paths = getStableElectronPaths(process.cwd())
+  const { electronBinary, mainEntry, preloadEntry } = paths
+  if (![mainEntry, preloadEntry].every(existsSync)) throw new Error('稳定 Electron 入口缺少 out 主进程或 preload 产物，请先执行 npm run build')
+  if (!existsSync(electronBinary)) throw new Error(`Electron 原生运行时未安装：${electronBinary}。请执行 pnpm rebuild electron 后重试`)
   stopExistingNovelDevProcesses(config.port)
   const vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'vite.stable.config.ts', '--host', config.rendererHost, '--port', String(config.port)], { stdio: 'inherit' })
   let electron
-  let stopping = false
-  const stop = () => {
-    if (stopping) return
-    stopping = true
-    vite.kill('SIGTERM')
-    electron?.kill('SIGTERM')
+  let stopPromise
+  const stop = async () => {
+    if (stopPromise) return stopPromise
+    stopPromise = (async () => {
+      vite.kill('SIGTERM')
+      electron?.kill('SIGTERM')
+      await Promise.all([waitForProcessExit(vite), waitForProcessExit(electron)])
+    })()
+    return stopPromise
   }
   try {
     await waitForRenderer(rendererUrl, config.timeoutMs ?? 8_000)
     const electronArgs = config.remoteDebuggingPort ? [`--remote-debugging-port=${config.remoteDebuggingPort}`, mainEntry] : [mainEntry]
     electron = spawn(electronBinary, electronArgs, { env: { ...process.env, ELECTRON_RENDERER_URL: rendererUrl }, stdio: 'inherit' })
-    electron.on('exit', () => stop())
+    electron.on('exit', () => { void stop() })
     return Object.freeze({ rendererUrl, electron, vite, stop })
   } catch (error) {
-    stop()
+    await stop()
     throw new Error(`稳定 Electron 启动失败：${error instanceof Error ? error.message : String(error)}`)
   }
 }
@@ -64,8 +94,8 @@ export async function startStableElectron(options = {}) {
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 if (isDirectRun) {
   const handle = await startStableElectron()
-  const stop = (code) => { handle.stop(); process.exit(code) }
-  process.on('SIGINT', () => stop(130))
-  process.on('SIGTERM', () => stop(143))
+  const stop = async (code) => { await handle.stop(); process.exit(code) }
+  process.on('SIGINT', () => { void stop(130) })
+  process.on('SIGTERM', () => { void stop(143) })
   handle.electron.on('exit', (code) => process.exit(code ?? 0))
 }

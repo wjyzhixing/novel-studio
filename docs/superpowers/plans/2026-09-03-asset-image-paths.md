@@ -26,7 +26,7 @@
 - `markdownToHtml(source: string, projectRoot?: string): string` emits `data-asset-id` and `data-asset-path` for project asset references.
 - `htmlToMarkdown(html: string): string` prefers `data-asset-path`, retaining legacy fallback behavior.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Test that a Chinese-named image with its stable ID in the Markdown title becomes hydratable HTML, and that its HTML round trip keeps the original path. Also test legacy `asset_*` filenames.
 
@@ -36,18 +36,20 @@ Run: `node_modules/.bin/vitest run tests/markdown.test.ts --reporter=verbose`
 
 Expected: the title-based asset ID is missing and the original Chinese path is not preserved.
 
-- [ ] **Step 3: Implement the minimal conversion fix**
+- [x] **Step 3: Implement the minimal conversion fix**
 
 Read the asset ID from the title before the filename, emit the original path in `data-asset-path`, and let Turndown use that path when rebuilding the Markdown image reference.
 
-- [ ] **Step 4: Run the focused tests and verify they pass**
+- [x] **Step 4: Run the focused tests and verify they pass**
 
 Run: `node_modules/.bin/vitest run tests/markdown.test.ts --reporter=verbose`
 
 Expected: all focused Markdown conversion tests pass.
 
-- [ ] **Step 5: Run broader verification**
+- [x] **Step 5: Run broader verification**
 
 Run: `npm run typecheck` and `npm run build`.
 
 Expected: both commands complete successfully; unrelated pre-existing test failures are not changed by this fix.
+
+> Evidence (2026-09-04): `tests/markdown.test.ts` covers title-based IDs, original Chinese asset paths, legacy `asset_*` filenames, and round-trip fidelity. Focused tests, `npm run typecheck`, and `npm run build` pass; runtime/UI contract checks also confirm asset hydration remains behind typed IPC.

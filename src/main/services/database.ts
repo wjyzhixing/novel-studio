@@ -319,6 +319,27 @@ export const MIGRATIONS: Migration[] = [
           ON chapter_scenes(chapter_rel_path, scene_order);
       `)
     }
+  },
+  {
+    version: 20,
+    name: 'workflow-side-effect-ledger',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS workflow_side_effects (
+          idempotency_key TEXT PRIMARY KEY,
+          run_id TEXT NOT NULL,
+          node_id TEXT NOT NULL,
+          status TEXT NOT NULL,
+          claim_id TEXT,
+          output_json TEXT,
+          has_output INTEGER NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_workflow_side_effects_status
+          ON workflow_side_effects(status, updated_at);
+      `)
+    }
   }
 ]
 
@@ -344,19 +365,40 @@ export class DatabaseService {
     let current = row?.user_version ?? 0
     const fromVersion = current
     const applied: Array<{ version: number; name: string }> = []
-    for (const migration of MIGRATIONS) {
-      if (migration.version <= current) continue
-      this.db.exec('BEGIN')
-      try {
+    const pending = MIGRATIONS.filter((migration) => migration.version > current)
+    if (pending.length === 0) {
+      this.report = { fromVersion, toVersion: current, applied, status: 'up_to_date' }
+      return
+    }
+
+    let activeMigration = pending[0]
+    this.db.exec('BEGIN')
+    try {
+      for (const migration of pending) {
+        activeMigration = migration
         migration.up(this.db)
         this.db.exec(`PRAGMA user_version = ${migration.version}`)
-        this.db.exec('COMMIT')
         current = migration.version
         applied.push({ version: migration.version, name: migration.name })
-      } catch (e) {
-        this.db.exec('ROLLBACK')
-        throw new DomainError('DB_ERROR', `迁移 v${migration.version}(${migration.name}) 失败: ${e instanceof Error ? e.message : String(e)}`)
       }
+      this.db.exec('COMMIT')
+    } catch (e) {
+      let rollbackStatus = '迁移已回滚'
+      try {
+        this.db.exec('ROLLBACK')
+        const rolledBack = this.db.prepare('PRAGMA user_version').get() as { user_version: number } | undefined
+        if ((rolledBack?.user_version ?? -1) !== fromVersion) {
+          rollbackStatus = `迁移回滚后版本异常（期望 v${fromVersion}，实际 v${rolledBack?.user_version ?? '未知'}）`
+        }
+      } catch (rollbackError) {
+        rollbackStatus = `迁移回滚失败: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`
+      } finally {
+        // A failed constructor must not leave a live sqlite handle behind.
+        // The caller can safely retry opening the project after the atomic
+        // transaction has been rolled back.
+        try { this.db.close() } catch { /* preserve the original migration error */ }
+      }
+      throw new DomainError('DB_ERROR', `迁移 v${activeMigration.version}(${activeMigration.name}) 失败（${rollbackStatus}）: ${e instanceof Error ? e.message : String(e)}`)
     }
     this.report = { fromVersion, toVersion: current, applied, status: applied.length > 0 ? 'migrated' : 'up_to_date' }
   }

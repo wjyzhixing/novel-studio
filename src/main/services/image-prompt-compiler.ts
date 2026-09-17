@@ -26,7 +26,7 @@ export function compileImagePrompt(input: ImagePromptInput): ImagePromptOutput {
     input.composition ? `Composition: ${input.composition}` : '',
     input.lighting ? `Lighting: ${input.lighting}` : '',
     input.artDirection ? `Art direction: ${input.artDirection}` : '',
-    ...(input.visualAnchors ?? []).map((anchor) => `Visual anchor: ${anchor}`),
+    ...(input.visualAnchors ?? []).map((anchor) => anchor.trim()).filter(Boolean).map((anchor) => `Visual anchor: ${anchor}`),
     ...visualContext
   ].filter(Boolean)
   return { prompt: parts.join('\n'), negativePrompt: 'low quality, blurry, inconsistent character design, extra limbs, text, watermark', visualContext }

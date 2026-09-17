@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { createServer } from 'vite'
 
 const run = promisify(execFile)
@@ -11,6 +12,7 @@ const recentFile = join(root, 'recents.json')
 const includeLong = process.argv.includes('--long')
 const report = {}
 let server
+const hashValue = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const { createGoldenFixture } = await import('./golden-path-fixture.mjs')
 
 try {
@@ -29,7 +31,7 @@ try {
   if (includeLong) fixtureArgs.push('--long')
   await run(process.execPath, fixtureArgs, { cwd: process.cwd() })
   server = await createServer({ root: process.cwd(), server: { middlewareMode: 'ssr', hmr: false, ws: false }, appType: 'custom', logLevel: 'error' })
-  const [{ ProjectService }, { RecentProjectsStore }, { ChapterService }, { SceneService }, { StoryService }, { RevisionService }, { DatabaseService }, { providerProfileSchema }, { redactSensitive }, { TaskQueue }, { WorkflowRunStore }, { executeWorkflow }, { builtinNovelFlow }, { OpenAICompatibleImageProvider, ImageService }, { CheckpointService }, { CanonService }, { ContextService }, { OpenAICompatibleProvider, AnthropicProvider, GeminiProvider }, { AiService }, { DiagnosticsService }, { AgentService }, { storyArtifactInputSchema }, { EmbeddingIndexService }, { WorkflowRuntimeService }, { VolumeService }, { BackupService }] = await Promise.all([
+  const [{ ProjectService }, { RecentProjectsStore }, { ChapterService }, { SceneService }, { StoryService }, { RevisionService }, { DatabaseService, MIGRATIONS }, { providerProfileSchema }, { redactSensitive }, { TaskQueue }, { WorkflowRunStore }, { executeWorkflow }, { builtinNovelFlow }, { OpenAICompatibleImageProvider, ImageService }, { CheckpointService }, { CanonService }, { ContextService }, { OpenAICompatibleProvider, AnthropicProvider, GeminiProvider }, { AiService }, { DiagnosticsService }, { AgentService }, { storyArtifactInputSchema }, { EmbeddingIndexService }, { WorkflowRuntimeService }, { VolumeService }, { BackupService }] = await Promise.all([
     server.ssrLoadModule('/src/main/services/project-service.ts'),
     server.ssrLoadModule('/src/main/services/recent-projects.ts'),
     server.ssrLoadModule('/src/main/services/chapter-service.ts'),
@@ -106,12 +108,31 @@ try {
   ])
   report.modelDiscovery = { ids: discoveredModels.map((models) => models[0]?.id), contextWindows: discoveredModels.map((models) => models[0]?.contextWindow), allDiscovered: discoveredModels.every((models) => models.length === 1) }
 
+  const recent = new RecentProjectsStore(recentFile)
+  const legacyArchive = join(root, 'migration-v1-legacy.zip')
+  const legacyRestoreRoot = join(root, 'migration-v1-restored')
+  await run('zip', ['-rq', legacyArchive, '.'], { cwd: join(root, 'migration-v1') })
+  await mkdir(legacyRestoreRoot, { recursive: true })
+  const legacyBackupProject = new ProjectService(recent)
+  const legacyBackupService = new BackupService(legacyBackupProject)
+  await legacyBackupService.restoreArchive(legacyArchive, legacyRestoreRoot)
+  const legacyInfo = await legacyBackupProject.open(legacyRestoreRoot)
+  const legacyVersion = legacyBackupProject.database.raw.prepare('PRAGMA user_version').get().user_version
+  report.legacyBackupMigration = { restored: legacyInfo.manifest.title === 'Migration v1', migratedTo: legacyVersion, fromVersion: legacyBackupProject.database.migrationReport.fromVersion, status: legacyBackupProject.database.migrationReport.status }
+  await legacyBackupProject.close()
+
   const migrationDb = new DatabaseService(join(root, 'migration-v1/.novel/project.db'))
   report.migration = migrationDb.migrationReport
   report.migrationUserVersion = migrationDb.raw.prepare('PRAGMA user_version').get().user_version
   migrationDb.close()
 
-  const recent = new RecentProjectsStore(recentFile)
+  const preSchemaDb = new DatabaseService(join(root, 'migration-v0/.novel/project.db'))
+  report.preSchemaMigration = {
+    ...preSchemaDb.migrationReport,
+    userVersion: preSchemaDb.raw.prepare('PRAGMA user_version').get().user_version
+  }
+  preSchemaDb.close()
+
   const staleManifestPath = join(root, 'tiny-cn/novel.yaml')
   const staleManifest = await readFile(staleManifestPath, 'utf8')
   await writeFile(staleManifestPath, staleManifest.replace('providerProfile: null', 'providerProfile: profile_missing'))
@@ -132,6 +153,27 @@ try {
     cleanAfterRepair: after.warnings.length === 0 && after.missingFiles.length === 0
   }
   await broken.close()
+
+  const malformedSourceRoot = join(root, 'malformed-source-project')
+  await mkdir(malformedSourceRoot, { recursive: true })
+  const malformedSourceProject = new ProjectService(recent)
+  await malformedSourceProject.create(malformedSourceRoot, 'Malformed source fixture')
+  const malformedEntityPath = join(malformedSourceRoot, 'characters/entity-broken.yaml')
+  const malformedEntityText = 'id: ent_broken\nname: [无法闭合\n'
+  await writeFile(malformedEntityPath, malformedEntityText)
+  await writeFile(join(malformedSourceRoot, 'story/relations.yaml'), 'relations:\n  - id: rel_broken\n    metadata: [\n')
+  await writeFile(join(malformedSourceRoot, 'story/timeline.yaml'), 'events:\n  - id: evt_broken\n    title: [\n')
+  const malformedBefore = await malformedSourceProject.checkIntegrity()
+  const malformedRepair = await malformedSourceProject.repairIndexes()
+  const malformedEntityPreserved = await readFile(malformedEntityPath, 'utf8') === malformedEntityText
+  report.sourceRecovery = {
+    detected: ['characters/entity-broken.yaml', 'story/relations.yaml', 'story/timeline.yaml'].every((path) => malformedBefore.invalidSourceFiles.includes(path)),
+    repairCompleted: true,
+    reportedDuringRepair: ['characters/entity-broken.yaml', 'story/relations.yaml', 'story/timeline.yaml'].every((path) => malformedRepair.invalidSourceFiles.includes(path)),
+    originalEntityPreserved: malformedEntityPreserved,
+    validIndexesRemainUsable: malformedRepair.documents === 1 && malformedRepair.entities === 0
+  }
+  await malformedSourceProject.close()
 
   const project = new ProjectService(recent)
   await project.open(join(root, 'tiny-cn'))
@@ -189,8 +231,14 @@ try {
   const backupBase = join(root, 'fixture-full.zip')
   const backupIncrement = join(root, 'fixture-incremental.zip')
   const backupRestoreRoot = join(root, 'fixture-restored')
+  const projectArchiveRestoreRoot = join(root, 'fixture-project-archive-restored')
   const backupSource = (await chapters.read(imported.relPath)).markdown
   await backupService.createArchive(backupBase)
+  await mkdir(projectArchiveRestoreRoot, { recursive: true })
+  await backupService.restoreArchive(backupBase, projectArchiveRestoreRoot)
+  const restoredProjectArchiveText = await readFile(join(projectArchiveRestoreRoot, imported.relPath), 'utf8')
+  const restoredProjectArchiveManifest = await readFile(join(projectArchiveRestoreRoot, 'novel.yaml'), 'utf8')
+  report.projectArchive = { exported: true, imported: restoredProjectArchiveText === backupSource, projectManifestValid: restoredProjectArchiveManifest.includes('projectId:'), excludesManifestFromProject: !(await readdir(projectArchiveRestoreRoot)).includes('backup-manifest.json') }
   await chapters.save(imported.relPath, `${backupSource.trimEnd()}\n\n增量备份变更\n`)
   await backupService.createIncrementalArchive(backupIncrement, backupBase)
   await mkdir(backupRestoreRoot, { recursive: true })
@@ -284,15 +332,19 @@ try {
     legacySnapshotJson.projectSchemaVersion = 0
     legacySnapshotJson.retrievalVersion = 0
     delete legacySnapshotJson.result.manifest.retrievalVersion
+    const legacyResultHash = hashValue({ text: legacySnapshotJson.result.text, manifest: { ...legacySnapshotJson.result.manifest, generatedAt: undefined } })
+    legacySnapshotJson.resultHash = legacyResultHash
     await writeFile(snapshotFile, JSON.stringify(legacySnapshotJson))
+    project.database.raw.prepare('UPDATE context_snapshots SET result_hash = ? WHERE id = ?').run(legacyResultHash, contextSnapshot.id)
     const legacyRead = await context.readSnapshot(contextSnapshot.id)
     const legacyReplay = await context.replaySnapshot(contextSnapshot.id)
-    legacySnapshotReadable = legacyRead.formatVersion === 1 && legacyRead.retrievalVersion === 1 && legacyRead.result.manifest.retrievalVersion === 1 && legacyReplay.compatibility.migrated && legacyReplay.compatibility.fromRetrievalVersion === 0 && legacyReplay.compatibility.notes.some((note) => note.includes('重新计算来源与预算'))
+    legacySnapshotReadable = legacyRead.formatVersion === 1 && legacyRead.retrievalVersion === 1 && legacyRead.result.manifest.retrievalVersion === 1 && legacyReplay.compatibility.migrated && legacyReplay.compatibility.fromRetrievalVersion === 0 && legacyReplay.compatibility.fromProjectSchemaVersion === 0 && legacyReplay.compatibility.resultStrategy === 'recompute' && legacyReplay.compatibility.sourceResultReusable === false && legacyReplay.compatibility.notes.some((note) => note.includes('重新计算来源与预算'))
     await writeFile(snapshotFile, JSON.stringify({ ...currentSnapshotJson, formatVersion: 999 }))
     try { await context.readSnapshot(contextSnapshot.id) } catch { futureSnapshotRejected = true }
     await writeFile(snapshotFile, JSON.stringify(currentSnapshotJson))
+    project.database.raw.prepare('UPDATE context_snapshots SET result_hash = ? WHERE id = ?').run(currentSnapshotJson.resultHash, contextSnapshot.id)
   }
-  report.snapshotVersions = { legacyReadable: legacySnapshotReadable, futureRejected: futureSnapshotRejected }
+  report.snapshotVersions = { legacyReadable: legacySnapshotReadable, futureRejected: futureSnapshotRejected, legacyResultStrategy: contextSnapshot ? (await context.replaySnapshot(contextSnapshot.id)).compatibility.resultStrategy : null }
   report.contextReplay = { listed: contextSnapshots.length > 0, readable: Boolean(contextSnapshot?.result.manifest), stable: replayStable?.changed === false, detectsChange: replayChanged?.changed === true, hasDifferences: (replayChanged?.differences.length ?? 0) > 0, hasHashes: Boolean(contextSnapshot?.requestHash && contextSnapshot?.resultHash) }
   const validForeshadowing = storyArtifactInputSchema.safeParse({ kind: 'foreshadowing', title: '伏笔 fixture', fields: { setup: '黑色芯片出现', target: '终章揭示', status: 'planned' }, notes: '' })
   const validForeshadowingEvidence = storyArtifactInputSchema.safeParse({ kind: 'foreshadowing', title: '带证据伏笔', fields: { setup: '第一章埋设', target: '终章回收', evidenceItems: [{ chapterRelPath: 'chapters/001-fixture.md', quote: '黑色芯片在月光下闪烁', note: '首次明确出现' }] }, notes: '' })
@@ -378,10 +430,10 @@ try {
     active += 1; maxActive = Math.max(maxActive, active); await new Promise((resolve) => setTimeout(resolve, 5)); order.push(index); active -= 1; return index
   })))
   report.queue = { maxActive, fifo: order.join(',') === '0,1,2,3', pendingAfterDrain: queue.pendingCount }
-  const timeoutWorkflow = { schemaVersion: 1, id: 'flow_timeout_fixture', name: 'Timeout Fixture', cyclePolicy: 'reject', nodes: [{ id: 'slow', type: 'utility.slow', label: 'Slow', position: { x: 0, y: 0 }, inputs: [], outputs: [], config: { timeoutMs: 5 } }], edges: [], variables: [] }
+  const timeoutWorkflow = { schemaVersion: 1, id: 'flow_timeout_fixture', name: 'Timeout Fixture', cyclePolicy: 'reject', nodes: [{ id: 'slow', type: 'utility.transform', label: 'Slow', position: { x: 0, y: 0 }, inputs: [], outputs: [], config: { timeoutMs: 5 } }], edges: [], variables: [] }
   const timeoutRun = await executeWorkflow(timeoutWorkflow, async () => { await new Promise((resolve) => setTimeout(resolve, 20)); return { status: 'succeeded', output: 'late' } })
   report.timeout = { status: timeoutRun.state.status, error: timeoutRun.state.nodes.slow.error ?? '', errorCategory: timeoutRun.state.nodes.slow.diagnostics?.errorCategory ?? '' }
-  const retryWorkflow = { schemaVersion: 1, id: 'flow_retry_fixture', name: 'Retry Fixture', cyclePolicy: 'reject', nodes: [{ id: 'flaky', type: 'utility.flaky', label: 'Flaky', position: { x: 0, y: 0 }, inputs: [], outputs: [], config: { retry: 1 } }], edges: [], variables: [] }
+  const retryWorkflow = { schemaVersion: 1, id: 'flow_retry_fixture', name: 'Retry Fixture', cyclePolicy: 'reject', nodes: [{ id: 'flaky', type: 'utility.transform', label: 'Flaky', position: { x: 0, y: 0 }, inputs: [], outputs: [], config: { retry: 1 } }], edges: [], variables: [] }
   let retryAttempts = 0
   const retryRun = await executeWorkflow(retryWorkflow, async () => { retryAttempts += 1; if (retryAttempts === 1) throw new Error('fixture transient failure'); return { status: 'succeeded', output: 'recovered' } })
   report.nodeRetry = { attempts: retryAttempts, status: retryRun.state.status, nodeStatus: retryRun.state.nodes.flaky.status }
@@ -476,11 +528,15 @@ try {
     await scale.close()
   }
 
-  if (report.migrationUserVersion !== 19) throw new Error(`migration 未升级到 v19: ${report.migrationUserVersion}`)
-  if (report.migration.fromVersion !== 2 || report.migration.toVersion !== 19 || report.migration.status !== 'migrated' || report.migration.applied.length !== 17 || report.migration.applied[0]?.version !== 3 || report.migration.applied.at(-1)?.version !== 19) throw new Error(`migration report 不符合预期: ${JSON.stringify(report.migration)}`)
+  const latestMigrationVersion = MIGRATIONS.at(-1)?.version ?? 0
+  if (report.migrationUserVersion !== latestMigrationVersion) throw new Error(`migration 未升级到 v${latestMigrationVersion}: ${report.migrationUserVersion}`)
+  if (report.migration.fromVersion !== 2 || report.migration.toVersion !== latestMigrationVersion || report.migration.status !== 'migrated' || report.migration.applied.length !== latestMigrationVersion - 2 || report.migration.applied[0]?.version !== 3 || report.migration.applied.at(-1)?.version !== latestMigrationVersion) throw new Error(`migration report 不符合预期: ${JSON.stringify(report.migration)}`)
+  if (report.preSchemaMigration.userVersion !== latestMigrationVersion || report.preSchemaMigration.fromVersion !== 0 || report.preSchemaMigration.toVersion !== latestMigrationVersion || report.preSchemaMigration.status !== 'migrated' || report.preSchemaMigration.applied.length !== latestMigrationVersion) throw new Error(`pre-schema migration report 不符合预期: ${JSON.stringify(report.preSchemaMigration)}`)
   if (report.repair.chaptersIndexed !== 1 || report.repair.entitiesIndexed !== 1 || !report.repair.repaired.restoredSources.includes('story/relations.yaml') || report.repair.afterWarnings.some((warning) => warning.includes('relations.yaml'))) throw new Error('损坏项目修复后的索引或源文件恢复结果不符合预期')
   if (!report.integrityPanel.detectsMismatch || !report.integrityPanel.reportsMissingSource || !report.integrityPanel.reportsRestoredSource || !report.integrityPanel.cleanAfterRepair) throw new Error(`完整性面板验收不符合预期: ${JSON.stringify(report.integrityPanel)}`)
+  if (!report.sourceRecovery.detected || !report.sourceRecovery.repairCompleted || !report.sourceRecovery.reportedDuringRepair || !report.sourceRecovery.originalEntityPreserved || !report.sourceRecovery.validIndexesRemainUsable) throw new Error(`损坏源文件恢复验收不符合预期: ${JSON.stringify(report.sourceRecovery)}`)
   if (!report.importExport.validHtml || !report.importExport.htmlEmbedsImage || report.importExport.chapterCount !== 4 || !report.importExport.blockedProjectOverwrite) throw new Error('导入导出结果或路径安全校验不符合预期')
+  if (!report.projectArchive.exported || !report.projectArchive.imported || !report.projectArchive.projectManifestValid || !report.projectArchive.excludesManifestFromProject) throw new Error(`项目归档导入导出结果不符合预期: ${JSON.stringify(report.projectArchive)}`)
   if (!report.incrementalBackup.fullCreated || !report.incrementalBackup.incrementalCreated || !report.incrementalBackup.restoredChangedFile || !report.incrementalBackup.excludesManifestFromProject) throw new Error(`增量备份结果不符合预期: ${JSON.stringify(report.incrementalBackup)}`)
   if (!report.checkpoint.created || !report.checkpoint.listed || !report.checkpoint.restored) throw new Error('Checkpoint 创建、列表或恢复语义不符合预期')
   if (!report.imageConnectionTest.doesNotPersistAsset) throw new Error('图片连接测试不应持久化资产')

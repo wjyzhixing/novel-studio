@@ -17,6 +17,7 @@ export function builtinNovelFlow(): Workflow {
     node('chapter-write', 'chapter.write', 'Write Back to Chapter', 'review-action', 'chapter'),
     node('memory', 'memory.extract', 'Memory'),
     node('image-propose', 'image.propose', 'Image Proposal'),
+    node('image-prompt', 'image.prompt', 'Image Prompt'),
     node('image-generate', 'image.generate', 'Generate Illustration'),
     node('image-select', 'image.select', 'Select Illustration'),
     node('image-insert', 'image.insert', 'Insert Illustration')
@@ -26,7 +27,7 @@ export function builtinNovelFlow(): Workflow {
     ['write', 'critic-character', 'in'], ['write', 'critic-logic', 'in'], ['write', 'critic-style', 'in'],
     ['critic-character', 'critic-merge', 'character'], ['critic-logic', 'critic-merge', 'logic'], ['critic-style', 'critic-merge', 'style'],
     ['critic-merge', 'rewrite', 'in'], ['rewrite', 'review', 'in'], ['review', 'chapter-write', 'in'], ['chapter-write', 'memory', 'in'], ['memory', 'image-propose', 'in'],
-    ['image-propose', 'image-generate', 'in'], ['image-generate', 'image-select', 'in'], ['image-select', 'image-insert', 'in']
+    ['image-propose', 'image-prompt', 'in'], ['image-prompt', 'image-generate', 'in'], ['image-generate', 'image-select', 'in'], ['image-select', 'image-insert', 'in']
   ].map(([source, target, targetPort], index) => ({ id: `edge-${index}-${source}-${target}`, source, sourcePort: 'out', target, targetPort }))
   const positionedNodes = nodes.map((item, index) => ({ ...item, position: { x: (index % 4) * 240 + 80, y: Math.floor(index / 4) * 170 + 80 } }))
   return { schemaVersion: 1, id: 'flow_builtin_novel', name: 'Novel Authoring Flow', cyclePolicy: 'reject', nodes: positionedNodes, edges, variables: [] }

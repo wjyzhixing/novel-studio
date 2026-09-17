@@ -2,7 +2,7 @@ import { readFile, readdir, rename, unlink } from 'node:fs/promises'
 import { basename, extname, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
-import type { ChapterContent, ChapterMeta, SearchHit, ExportFormat } from '../../shared/chapter'
+import type { ChapterContent, ChapterMeta, SearchHit, ExportFormat, ExportOptions } from '../../shared/chapter'
 import type { Revision } from '../../shared/revision'
 import { CHAPTERS_DIR } from '../../shared/chapter'
 import { DomainError } from './errors'
@@ -13,6 +13,8 @@ import { isInsideRoot } from './paths'
 import { resolveInsideRoot } from './paths'
 import MarkdownIt from 'markdown-it'
 import { removeSceneSidecar, renameSceneSidecar } from './scene-service'
+import { stripImageMetadata } from './image-metadata'
+import type { ExtensionRegistry } from './extension-registry'
 
 export interface ChapterPathReferenceUpdater {
   remapChapter(from: string, to: string): Promise<void>
@@ -39,7 +41,7 @@ function sanitizeSlug(name: string): string {
  * `documents` + `documents_fts` tables are a rebuildable index.
  */
 export class ChapterService {
-  constructor(private readonly project: ProjectService, private readonly createRevision?: (input: Omit<Revision, 'id' | 'createdAt'>) => Promise<Revision>, private readonly pathReferences?: ChapterPathReferenceUpdater) {}
+  constructor(private readonly project: ProjectService, private readonly createRevision?: (input: Omit<Revision, 'id' | 'createdAt'>) => Promise<Revision>, private readonly pathReferences?: ChapterPathReferenceUpdater, private readonly extensions?: ExtensionRegistry) {}
 
   get database() {
     return this.project.database.raw
@@ -299,28 +301,57 @@ export class ChapterService {
 
   async importFile(sourcePath: string, title?: string): Promise<ChapterMeta> {
     const extension = extname(sourcePath).toLowerCase()
-    if (!['.md', '.markdown', '.txt'].includes(extension)) throw new DomainError('VALIDATION_FAILED', '只支持导入 Markdown 或 TXT 文件')
-    let source: string
-    try { source = await readFile(sourcePath, 'utf8') } catch { throw new DomainError('IO_ERROR', '无法读取要导入的文件') }
-    if (source.length > 2_000_000) throw new DomainError('VALIDATION_FAILED', '导入文件不能超过 2MB')
-    const fallbackTitle = basename(sourcePath, extension).replace(/[-_]+/g, ' ').trim() || '导入章节'
-    const markdown = extension === '.txt' ? `# ${title?.trim() || fallbackTitle}\n\n${source}` : source
+    const builtin = ['.md', '.markdown', '.txt'].includes(extension)
+    let fallbackTitle = basename(sourcePath, extension).replace(/[-_]+/g, ' ').trim() || '导入章节'
+    let markdown: string
+    if (!builtin) {
+      if (!this.extensions) throw new DomainError('VALIDATION_FAILED', '只支持导入 Markdown 或 TXT 文件')
+      const importer = this.extensions.getImporterForExtension(extension)
+      if (importer.extensionId) this.extensions.assertPermissionsGranted(importer.extensionId, importer.permissions ?? [])
+      let imported: { title: string; markdown: string }
+      try { imported = await importer.import(sourcePath, { signal: new AbortController().signal }) } catch (error) {
+        if (error instanceof DomainError) throw error
+        throw new DomainError('IO_ERROR', `扩展导入失败: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      if (typeof imported.title !== 'string' || typeof imported.markdown !== 'string' || imported.markdown.length > 2_000_000) throw new DomainError('VALIDATION_FAILED', '扩展导入器返回的章节内容无效')
+      fallbackTitle = imported.title.trim() || fallbackTitle
+      markdown = imported.markdown
+    } else {
+      let source: string
+      try { source = await readFile(sourcePath, 'utf8') } catch { throw new DomainError('IO_ERROR', '无法读取要导入的文件') }
+      if (source.length > 2_000_000) throw new DomainError('VALIDATION_FAILED', '导入文件不能超过 2MB')
+      markdown = extension === '.txt' ? `# ${title?.trim() || fallbackTitle}\n\n${source}` : source
+    }
     const chapterTitle = titleFromMarkdown(markdown, title?.trim() || fallbackTitle)
     const created = await this.create(chapterTitle)
     await this.save(created.relPath, markdown)
     return (await this.list()).find((chapter) => chapter.relPath === created.relPath) ?? created
   }
 
-  async exportAll(format: ExportFormat, destination: string): Promise<{ destination: string; chapterCount: number }> {
+  async exportAll(format: ExportFormat, destination: string, options: ExportOptions = {}): Promise<{ destination: string; chapterCount: number }> {
     const projectRoot = this.project.getInfo()?.rootPath
     if (!projectRoot) throw new DomainError('NO_PROJECT_OPEN', '当前没有打开的项目')
     const destinationPath = resolve(destination)
     if (isInsideRoot(projectRoot, destinationPath)) throw new DomainError('PATH_DENIED', '导出文件不能覆盖项目内部文件')
-    const expectedExtension = format === 'markdown' ? '.md' : format === 'plain' ? '.txt' : '.html'
+    const builtin = ['markdown', 'plain', 'html'].includes(format)
+    const extension = builtin ? (format === 'markdown' ? '.md' : format === 'plain' ? '.txt' : '.html') : `.${format}`
+    const expectedExtension = extension
     if (extname(destinationPath).toLowerCase() !== expectedExtension) throw new DomainError('VALIDATION_FAILED', `导出文件扩展名必须是 ${expectedExtension}`)
     const metas = await this.list()
     const chapters = await Promise.all(metas.map((meta) => this.read(meta.relPath)))
-    const content = format === 'html' ? await renderHtml(chapters, projectRoot) : chapters.map((chapter) => format === 'plain' ? stripMarkdown(chapter.markdown) : chapter.markdown).join('\n\n---\n\n')
+    let content: string | Uint8Array
+    if (!builtin) {
+      if (!this.extensions) throw new DomainError('VALIDATION_FAILED', `没有支持 ${format} 的导出器`)
+      const exporter = this.extensions.getExporter(format)
+      if (exporter.extensionId) this.extensions.assertPermissionsGranted(exporter.extensionId, exporter.permissions ?? [])
+      try { content = await exporter.export(chapters, { signal: new AbortController().signal }) } catch (error) {
+        if (error instanceof DomainError) throw error
+        throw new DomainError('IO_ERROR', `扩展导出失败: ${error instanceof Error ? error.message : String(error)}`)
+      }
+      if (typeof content !== 'string' && !(content instanceof Uint8Array)) throw new DomainError('VALIDATION_FAILED', '扩展导出器返回的数据无效')
+    } else {
+      content = format === 'html' ? await renderHtml(chapters, projectRoot, options.cleanImageMetadata === true) : chapters.map((chapter) => format === 'plain' ? stripMarkdown(chapter.markdown) : chapter.markdown).join('\n\n---\n\n')
+    }
     try { await atomicWriteFile(destinationPath, content) } catch (error) { throw new DomainError('IO_ERROR', `导出失败: ${error instanceof Error ? error.message : String(error)}`) }
     return { destination: destinationPath, chapterCount: chapters.length }
   }
@@ -404,21 +435,22 @@ function toTimeline(row: TimelineRow) {
 
 const markdownRenderer = new MarkdownIt({ html: false, breaks: true, linkify: false })
 
-async function renderHtml(chapters: ChapterContent[], projectRoot: string): Promise<string> {
+async function renderHtml(chapters: ChapterContent[], projectRoot: string, cleanImageMetadata: boolean): Promise<string> {
   const body = (await Promise.all(chapters.map(async (chapter) => {
     const rendered = markdownRenderer.render(chapter.markdown)
-    return `<article><h1>${escapeHtml(chapter.title)}</h1>${await embedExportImages(rendered, projectRoot)}</article>`
+    return `<article><h1>${escapeHtml(chapter.title)}</h1>${await embedExportImages(rendered, projectRoot, cleanImageMetadata)}</article>`
   }))).join('\n')
   return `<!doctype html>\n<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Novel Studio Export</title><style>body{max-width:860px;margin:40px auto;padding:0 24px;font:16px/1.8 system-ui,sans-serif;color:#222}article{margin-bottom:56px}img{max-width:100%;height:auto}h1{line-height:1.3}</style></head><body>${body}</body></html>\n`
 }
 
-async function embedExportImages(html: string, projectRoot: string): Promise<string> {
+async function embedExportImages(html: string, projectRoot: string, cleanImageMetadata: boolean): Promise<string> {
   const sources = [...html.matchAll(/src="((?:\.\.?\/)?assets\/[^"?#]+)"/g)].map((match) => match[1])
   const replacements = await Promise.all([...new Set(sources)].map(async (source) => {
     const projectPath = source.replace(/^(?:\.\.?\/)+/, '')
     if (!projectPath.startsWith('assets/')) return [source, missingExportImage()] as const
     try {
-      const data = await readFile(resolveInsideRoot(projectRoot, projectPath))
+      const rawData = await readFile(resolveInsideRoot(projectRoot, projectPath))
+      const data = cleanImageMetadata ? Buffer.from(stripImageMetadata(rawData, exportImageMime(projectPath))) : rawData
       return [source, `data:${exportImageMime(projectPath)};base64,${data.toString('base64')}`] as const
     } catch { return [source, missingExportImage()] as const }
   }))

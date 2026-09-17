@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { captureSelectionSnapshot, findSelectionRangeByText, nextPersistedSelection, persistedSelectionContainsPosition, selectionContainsText } from '../src/renderer/src/lib/selection-persistence'
+import { captureSelectionSnapshot, findSelectionRangeByText, nativeSelectionState, nextPersistedSelection, persistedSelectionContainsPosition, selectionBelongsToChapter, selectionContainsText, selectionDecorationNeedsUpdate } from '../src/renderer/src/lib/selection-persistence'
 
 describe('editor selection persistence', () => {
   it('keeps a normalized cross-block selection snapshot without mutating content', () => {
@@ -51,5 +51,27 @@ describe('editor selection persistence', () => {
 
   it('does not restore an explicitly cleared selection', () => {
     expect(findSelectionRangeByText({ content: { size: 10 }, descendants: () => undefined }, '')).toBeNull()
+  })
+
+  it('keeps a confirmed selection when focus moves outside the editor', () => {
+    expect(nativeSelectionState({ active: true, confirmed: true }, false)).toEqual({ active: false, confirmed: true })
+  })
+
+  it('only restores a confirmed selection for its original chapter', () => {
+    const snapshot = { from: 4, to: 12, text: '正文选区', relPath: 'chapters/001-test.md' }
+    expect(selectionBelongsToChapter(snapshot, 'chapters/001-test.md')).toBe(true)
+    expect(selectionBelongsToChapter(snapshot, 'chapters/002-test.md')).toBe(false)
+  })
+
+  it('does not dispatch another transaction when the same decoration is already present', () => {
+    expect(selectionDecorationNeedsUpdate({ from: 4, to: 12 }, { from: 4, to: 12 })).toBe(false)
+    expect(selectionDecorationNeedsUpdate({ from: 4, to: 12 }, { from: 5, to: 12 })).toBe(true)
+    expect(selectionDecorationNeedsUpdate(null, { from: 4, to: 12 })).toBe(true)
+  })
+
+  it('clears the persisted range instead of restoring it after an explicit clear', () => {
+    const current = { from: 4, to: 12 }
+    expect(nextPersistedSelection(current, { clear: true }, 40)).toBeNull()
+    expect(nextPersistedSelection(null, undefined, 40)).toBeNull()
   })
 })

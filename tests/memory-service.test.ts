@@ -19,7 +19,13 @@ describe('MemoryService', () => {
     const canon = new CanonService(project); const context = new ContextService(project, chapters, story, canon)
     const ai = { structured: async () => ({ facts: [{ subjectId: entity.id, predicate: 'status.injured', object: true, validFrom: null, validTo: null, confidence: 0.9, range: [4, 9] }] }) }
     const memory = new MemoryService(chapters, context, ai as never, new AgentService(), canon)
-    const proposals = await memory.extractFromChapter('profile_mock', chapter.relPath)
-    expect(proposals).toHaveLength(1); expect(proposals[0].status).toBe('pending'); expect(proposals[0].payload.source).toEqual({ documentId: chapter.relPath, range: [4, 9] })
+    let calls = 0
+    const idempotentAi = { structured: async (_profileId: string, request: { responseSchema?: { name: string; schema: Record<string, unknown> } }) => { calls += 1; expect(request.responseSchema).toEqual({ name: 'memory_extraction', schema: expect.objectContaining({ type: 'object' }) }); return { facts: [{ subjectId: entity.id, predicate: 'status.injured', object: true, validFrom: null, validTo: null, confidence: 0.9, range: [4, 9] }] } } }
+    const idempotentMemory = new MemoryService(chapters, context, idempotentAi as never, new AgentService(), canon)
+    const proposals = await idempotentMemory.extractFromChapter('profile_mock', chapter.relPath, 'run_memory_1')
+    const retried = await idempotentMemory.extractFromChapter('profile_mock', chapter.relPath, 'run_memory_1')
+    expect(proposals).toHaveLength(1); expect(proposals[0].status).toBe('pending'); expect('source' in proposals[0].payload && proposals[0].payload.source).toEqual({ documentId: chapter.relPath, range: [4, 9] })
+    expect(retried.map((proposal) => proposal.id)).toEqual(proposals.map((proposal) => proposal.id))
+    expect(calls).toBe(1)
   })
 })

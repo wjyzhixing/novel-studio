@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { EntityInput, EntityKind, StoryEntity, TimelineEvent, TimelineEventInput, StoryArtifact, StoryArtifactInput, StoryArtifactKind, StoryRelation, StoryRelationInput, ForeshadowingRecord, ForeshadowingStatus } from '../../shared/story'
+import type { EntityInput, EntityKind, StoryEntity, TimelineEvent, TimelineEventInput, StoryArtifact, StoryArtifactInput, StoryArtifactKind, StoryRelation, StoryRelationInput, ForeshadowingRecord, ForeshadowingStatus, StorySearchResult } from '../../shared/story'
 import { entityInputSchema, timelineEventInputSchema, storyArtifactInputSchema, storyRelationInputSchema } from '../../shared/story'
 import type { ProjectService } from './project-service'
 import { DomainError } from './errors'
@@ -82,6 +82,42 @@ export class StoryService {
       ORDER BY name COLLATE NOCASE LIMIT 50
     `).all(like, like, like, like) as unknown as EntityRow[]
     return rows.map(toEntity)
+  }
+
+  async searchAll(query: string): Promise<StorySearchResult[]> {
+    const q = query.trim()
+    if (!q) return []
+    const like = `%${q}%`
+    const entities = (this.db.prepare(`SELECT id, kind, name FROM entities WHERE name LIKE ? OR aliases_json LIKE ? OR fields_json LIKE ? OR notes LIKE ? ORDER BY updated_at DESC LIMIT 20`).all(like, like, like, like) as Array<{ id: string; kind: EntityKind; name: string }>).map((item) => ({ id: item.id, title: item.name, kind: 'entity' as const, type: item.kind, hint: `${item.kind} · ${item.id}` }))
+    const timeline = (this.db.prepare(`SELECT id, title, at, chapter_rel_path FROM timeline_events WHERE title LIKE ? OR description LIKE ? OR causes LIKE ? OR effects LIKE ? ORDER BY updated_at DESC LIMIT 20`).all(like, like, like, like) as Array<{ id: string; title: string; at: string | null; chapter_rel_path: string | null }>).map((item) => ({ id: item.id, title: item.title, kind: 'timeline' as const, type: 'timeline' as const, hint: [item.at, item.chapter_rel_path].filter(Boolean).join(' · ') || 'timeline' }))
+    const artifacts = (this.db.prepare(`SELECT id, kind, title, updated_at FROM story_artifacts WHERE title LIKE ? OR fields_json LIKE ? OR notes LIKE ? ORDER BY updated_at DESC LIMIT 20`).all(like, like, like) as Array<{ id: string; kind: StoryArtifactKind; title: string }>).map((item) => ({ id: item.id, title: item.title, kind: 'artifact' as const, type: item.kind, hint: `${item.kind} · Story Bible` }))
+    const relations = (this.db.prepare(`
+      SELECT relations.id, relations.relation_type, relations.metadata_json,
+        from_entity.name AS from_name, to_entity.name AS to_name
+      FROM relations
+      LEFT JOIN entities AS from_entity ON from_entity.id = relations.from_id
+      LEFT JOIN entities AS to_entity ON to_entity.id = relations.to_id
+      WHERE relations.relation_type LIKE ? OR relations.metadata_json LIKE ?
+        OR from_entity.name LIKE ? OR to_entity.name LIKE ?
+      ORDER BY relations.created_at DESC LIMIT 20
+    `).all(like, like, like, like) as Array<{ id: string; relation_type: string; metadata_json: string; from_name: string | null; to_name: string | null }>).map((item) => ({
+      id: item.id,
+      title: `${item.from_name ?? '∅'} — ${item.relation_type} → ${item.to_name ?? '∅'}`,
+      kind: 'relation' as const,
+      type: 'relation' as const,
+      hint: `relation · ${item.id}`
+    }))
+    const documents = (this.db.prepare(`
+      SELECT rel_path, title, content FROM documents_fts
+      WHERE rel_path LIKE 'chapters/%' AND (content LIKE ? OR title LIKE ?)
+      ORDER BY rowid DESC LIMIT 20
+    `).all(like, like) as Array<{ rel_path: string; title: string; content: string }>).map((item) => {
+      const index = item.content.indexOf(q)
+      const start = Math.max(0, index - 24)
+      const snippet = item.content.slice(start, start + 120).replaceAll(/\s+/g, ' ').trim()
+      return { id: `doc:${item.rel_path}`, title: item.title, kind: 'document' as const, type: 'document' as const, hint: `chapter · ${snippet}`, relPath: item.rel_path }
+    })
+    return [...entities, ...timeline, ...artifacts, ...relations, ...documents]
   }
 
   async listTimeline(): Promise<TimelineEvent[]> {

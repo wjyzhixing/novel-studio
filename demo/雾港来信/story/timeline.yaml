@@ -1,0 +1,11 @@
+events:
+  - id: evt_letter_arrives
+    title: 匿名包裹寄达修复店
+    at: 故事开始日·傍晚
+    description: 林岚收到一盘来自十五年前的损坏磁带，寄件人和回邮地址都被撕掉。
+    chapterRelPath: chapters/001-录音里的求救声.md
+    entityIds:
+      - ent_lin_lan
+    locationId: null
+    causes: 林岚长期修复旧录音，并公开留下了店铺地址。
+    effects: 她重新面对父亲失踪的旧案，并开始追查磁带来源。

@@ -7,4 +7,12 @@ describe('Electron security configuration', () => {
     expect(main).toContain('contextIsolation: true'); expect(main).toContain('nodeIntegration: false'); expect(main).toContain('sandbox: true'); expect(main).toContain('setWindowOpenHandler')
     expect(preload).toContain('contextBridge.exposeInMainWorld'); expect(preload).not.toContain('exposeInMainWorld(\'ipcRenderer\'')
   })
+
+  it('provides a renderer boundary lint command', async () => {
+    const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { scripts?: Record<string, string> }
+    const script = await readFile(new URL('../scripts/lint-boundaries.mjs', import.meta.url), 'utf8')
+    expect(packageJson.scripts?.lint).toBe('npm run lint:boundaries')
+    expect(script).toContain('renderer-no-privileged-import')
+    expect(script).toContain('renderer-no-direct-ipc')
+  })
 })

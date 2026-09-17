@@ -1,0 +1,22 @@
+artifacts:
+  - id: art_second_door
+    kind: foreshadowing
+    title: 灯塔下的第二个门
+    fields:
+      setup: 损坏磁带在第一章末尾说出“别让他们找到灯塔下的第二个门”。
+      target: 林岚在最低潮前确认第二个门的用途，并决定哪些证据可以公开。
+      payoffDeadline: 第九章第二个门
+      status: planted
+      evidence: 磁带末尾的恢复音频
+      evidenceItems:
+        - chapterRelPath: chapters/001-录音里的求救声.md
+          quote: 别让他们找到灯塔下的第二个门。
+          note: 第一处明确的声音伏笔
+  - id: art_fathers_disappearance
+    kind: plot
+    title: 林岚父亲的失踪
+    fields:
+      status: in-progress
+      setup: 父亲在十五年前事故后失踪，只留下未完成的磁带修复记录。
+      payoff: 林岚确认父亲隐瞒真相的原因，并接受无法追回过去。
+      priority: high

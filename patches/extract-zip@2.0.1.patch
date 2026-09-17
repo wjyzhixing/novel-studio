@@ -1,0 +1,30 @@
+diff --git a/index.js b/index.js
+index 23384ea16bb848616886f356d8d69f94325535bf..e90682336480849d1e933808d633da84cb41f223 100644
+--- a/index.js
++++ b/index.js
+@@ -110,6 +110,10 @@ class Extractor {
+ 
+     const procMode = this.getExtractedMode(mode, isDir) & 0o777
+ 
++    if (symlink) {
++      throw new Error(`Symlink entries are not supported: ${entry.fileName}`)
++    }
++
+     // always ensure folders are created
+     const destDir = isDir ? dest : path.dirname(dest)
+ 
+@@ -124,13 +128,7 @@ class Extractor {
+     debug('opening read stream', dest)
+     const readStream = await promisify(this.zipfile.openReadStream.bind(this.zipfile))(entry)
+ 
+-    if (symlink) {
+-      const link = await getStream(readStream)
+-      debug('creating symlink', link, dest)
+-      await fs.symlink(link, dest)
+-    } else {
+-      await pipeline(readStream, createWriteStream(dest, { mode: procMode }))
+-    }
++    await pipeline(readStream, createWriteStream(dest, { mode: procMode }))
+   }
+ 
+   getExtractedMode (entryMode, isDir) {

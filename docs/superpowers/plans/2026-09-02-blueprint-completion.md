@@ -41,7 +41,7 @@
 - i18n/accessibility 完整键盘路径。
 - 安装包、签名、自动更新和 telemetry opt-in 的发布检查清单。
 
-当前已完成 typed contracts 与 Main-owned registry；外部插件包、权限和签名安装仍待实现。
+当前已完成 typed contracts、Main-owned registry、权限预览、依赖校验和 Ed25519 manifest 签名校验；`ExtensionPackageStore` 已提供仅 manifest 的原子持久化安装/恢复/卸载能力，可信公钥读取、安装/卸载 IPC 和 Developer Panel 入口也已接入。外部代码发现/执行隔离、正式发布者公钥和发布级回滚验收仍待实现。
 
 ## 当前进度
 

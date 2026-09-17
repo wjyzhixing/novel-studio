@@ -1,17 +1,83 @@
-import type { WorkflowRun } from '../../shared/runtime'
+import { randomUUID } from 'node:crypto'
+import type { WorkflowRun, WorkflowSideEffect, WorkflowSideEffectClaim, WorkflowSideEffectStore } from '../../shared/runtime'
 import type { JobRecord } from '../../shared/jobs'
 import type { ProjectService } from './project-service'
 
-export class WorkflowRunStore {
+export class WorkflowRunStore implements WorkflowSideEffectStore {
   constructor(private readonly project: ProjectService) {}
+
+  async claimSideEffect(idempotencyKey: string, runId: string, nodeId: string): Promise<WorkflowSideEffectClaim> {
+    const db = this.project.database.raw
+    const now = new Date().toISOString()
+    const claimId = randomUUID()
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      const row = db.prepare('SELECT status, claim_id, output_json, has_output, updated_at FROM workflow_side_effects WHERE idempotency_key = ?').get(idempotencyKey) as { status: string; claim_id: string | null; output_json: string | null; has_output: number; updated_at: string } | undefined
+      if (!row) {
+        db.prepare('INSERT INTO workflow_side_effects(idempotency_key, run_id, node_id, status, claim_id, output_json, has_output, created_at, updated_at) VALUES(?, ?, ?, \'running\', ?, NULL, 0, ?, ?)').run(idempotencyKey, runId, nodeId, claimId, now, now)
+        db.exec('COMMIT')
+        return { kind: 'execute', claimId }
+      }
+      if (row.status === 'succeeded') {
+        db.exec('COMMIT')
+        return { kind: 'succeeded', effect: decodeSideEffect(row) }
+      }
+      const expired = Date.now() - Date.parse(row.updated_at) > 60_000
+      if (row.status === 'running' && expired) {
+        db.prepare('UPDATE workflow_side_effects SET run_id = ?, node_id = ?, claim_id = ?, updated_at = ? WHERE idempotency_key = ?').run(runId, nodeId, claimId, now, idempotencyKey)
+        db.exec('COMMIT')
+        return { kind: 'execute', claimId }
+      }
+      db.exec('COMMIT')
+      return { kind: 'in_progress' }
+    } catch (error) {
+      try { db.exec('ROLLBACK') } catch { /* Preserve the original database error. */ }
+      throw error
+    }
+  }
+
+  async getSideEffect(idempotencyKey: string): Promise<WorkflowSideEffect | undefined> {
+    const row = this.project.database.raw.prepare('SELECT status, claim_id, output_json, has_output, updated_at FROM workflow_side_effects WHERE idempotency_key = ?').get(idempotencyKey) as { status: string; claim_id: string | null; output_json: string | null; has_output: number; updated_at: string } | undefined
+    return row?.status === 'succeeded' ? decodeSideEffect(row) : undefined
+  }
+
+  async renewSideEffect(claimId: string, idempotencyKey: string): Promise<void> {
+    const result = this.project.database.raw.prepare('UPDATE workflow_side_effects SET updated_at = ? WHERE idempotency_key = ? AND claim_id = ? AND status = \'running\'').run(new Date().toISOString(), idempotencyKey, claimId)
+    if (result.changes !== 1) throw new Error(`Workflow side-effect claim 已失效: ${idempotencyKey}`)
+  }
+
+  async completeSideEffect(claimId: string, idempotencyKey: string, output: unknown): Promise<void> {
+    const hasOutput = output !== undefined ? 1 : 0
+    const outputJson = hasOutput ? JSON.stringify(output) : null
+    const result = this.project.database.raw.prepare('UPDATE workflow_side_effects SET status = \'succeeded\', claim_id = NULL, output_json = ?, has_output = ?, updated_at = ? WHERE idempotency_key = ? AND claim_id = ? AND status = \'running\'').run(outputJson, hasOutput, new Date().toISOString(), idempotencyKey, claimId)
+    if (result.changes !== 1) throw new Error(`Workflow side-effect claim 已失效: ${idempotencyKey}`)
+  }
+
+  async releaseSideEffect(claimId: string, idempotencyKey: string): Promise<void> {
+    this.project.database.raw.prepare('DELETE FROM workflow_side_effects WHERE idempotency_key = ? AND claim_id = ? AND status = \'running\'').run(idempotencyKey, claimId)
+  }
+
+  async releaseInterruptedSideEffects(runId: string): Promise<void> {
+    this.project.database.raw.prepare('DELETE FROM workflow_side_effects WHERE run_id = ? AND status = \'running\'').run(runId)
+  }
   async save(state: WorkflowRun): Promise<void> {
-    const db = this.project.database.raw; const now = new Date().toISOString()
-    db.prepare(`INSERT INTO workflow_runs(id, workflow_id, status, state_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status=excluded.status, state_json=excluded.state_json, updated_at=excluded.updated_at`).run(state.id, state.workflowId, state.status, JSON.stringify(state), state.createdAt, now)
-    const statement = db.prepare(`INSERT INTO node_runs(id, run_id, node_id, status, state_json, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status=excluded.status, state_json=excluded.state_json, updated_at=excluded.updated_at`)
-    for (const node of Object.values(state.nodes)) statement.run(`${state.id}:${node.nodeId}`, state.id, node.nodeId, node.status, JSON.stringify(node), now)
-    const attempts = Math.max(0, ...Object.values(state.nodes).map((node) => node.attempts))
-    const error = Object.values(state.nodes).find((node) => node.error)?.error ?? null
-    db.prepare(`INSERT INTO jobs(id, kind, ref_id, status, attempts, error, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status=excluded.status, attempts=excluded.attempts, error=excluded.error, updated_at=excluded.updated_at`).run(`job_${state.id}`, 'workflow', state.id, state.status, attempts, error, state.createdAt, now)
+    const db = this.project.database.raw
+    const stateJson = JSON.stringify(state)
+    const nodeEntries = Object.values(state.nodes).map((node) => ({ node, stateJson: JSON.stringify(node) }))
+    const now = new Date().toISOString()
+    const attempts = Math.max(0, ...nodeEntries.map(({ node }) => node.attempts))
+    const error = nodeEntries.find(({ node }) => node.error)?.node.error ?? null
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      db.prepare(`INSERT INTO workflow_runs(id, workflow_id, status, state_json, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status=excluded.status, state_json=excluded.state_json, updated_at=excluded.updated_at`).run(state.id, state.workflowId, state.status, stateJson, state.createdAt, now)
+      const statement = db.prepare(`INSERT INTO node_runs(id, run_id, node_id, status, state_json, updated_at) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status=excluded.status, state_json=excluded.state_json, updated_at=excluded.updated_at`)
+      for (const { node, stateJson: nodeJson } of nodeEntries) statement.run(`${state.id}:${node.nodeId}`, state.id, node.nodeId, node.status, nodeJson, now)
+      db.prepare(`INSERT INTO jobs(id, kind, ref_id, status, attempts, error, created_at, updated_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status=excluded.status, attempts=excluded.attempts, error=excluded.error, updated_at=excluded.updated_at`).run(`job_${state.id}`, 'workflow', state.id, state.status, attempts, error, state.createdAt, now)
+      db.exec('COMMIT')
+    } catch (error) {
+      try { db.exec('ROLLBACK') } catch { /* Preserve the original database error. */ }
+      throw error
+    }
   }
   async get(runId: string): Promise<WorkflowRun | null> {
     const row = this.project.database.raw.prepare('SELECT state_json FROM workflow_runs WHERE id = ?').get(runId) as { state_json: string } | undefined
@@ -26,17 +92,20 @@ export class WorkflowRunStore {
   }
   async listJobs(limit = 50): Promise<JobRecord[]> {
     const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)))
-    const rows = this.project.database.raw.prepare('SELECT id, kind, ref_id, status, attempts, error, created_at, updated_at FROM jobs ORDER BY updated_at DESC LIMIT ?').all(safeLimit) as unknown as Array<{ id: string; kind: 'workflow'; ref_id: string; status: JobRecord['status']; attempts: number; error: string | null; created_at: string; updated_at: string }>
+    const rows = this.project.database.raw.prepare('SELECT id, kind, ref_id, status, attempts, error, created_at, updated_at FROM jobs ORDER BY updated_at DESC, rowid DESC LIMIT ?').all(safeLimit) as unknown as Array<{ id: string; kind: 'workflow'; ref_id: string; status: JobRecord['status']; attempts: number; error: string | null; created_at: string; updated_at: string }>
     return rows.map((row) => ({ id: row.id, kind: row.kind, refId: row.ref_id, status: row.status, attempts: row.attempts, error: row.error, createdAt: row.created_at, updatedAt: row.updated_at }))
   }
-  async recoverInterrupted(): Promise<number> {
+  async recoverInterrupted(activeRunIds: Iterable<string> = []): Promise<number> {
+    const active = new Set(activeRunIds)
     const rows = this.project.database.raw.prepare("SELECT state_json FROM workflow_runs WHERE status = 'running'").all() as unknown as Array<{ state_json: string }>
     let recovered = 0
     for (const row of rows) {
       let state: WorkflowRun
       try { state = normalizeLegacyRun(JSON.parse(row.state_json) as WorkflowRun) } catch { continue }
+      if (active.has(state.id)) continue
       const nodes = Object.fromEntries(Object.entries(state.nodes).map(([id, node]) => node.status === 'running' ? [id, { ...node, status: 'failed' as const, error: '应用重启，节点运行被中断，可 Retry', finishedAt: new Date().toISOString(), log: [...node.log, '应用重启，运行被中断'] }] : [id, node]))
       const next: WorkflowRun = { ...state, status: 'failed', nodes, updatedAt: new Date().toISOString() }
+      await this.releaseInterruptedSideEffects(state.id)
       await this.save(next)
       recovered += 1
     }
@@ -119,4 +188,9 @@ function isChapterPath(value: unknown): value is string {
   // the boundary strict (one filename directly under chapters/, no traversal)
   // while avoiding an ASCII-only false negative that hides Resume controls.
   return typeof value === 'string' && /^chapters\/[^/\\]+\.md$/u.test(value) && !value.includes('..')
+}
+
+function decodeSideEffect(row: { output_json: string | null; has_output: number }): WorkflowSideEffect {
+  if (!row.has_output) return { status: 'succeeded' }
+  return { status: 'succeeded', output: row.output_json === null ? null : JSON.parse(row.output_json) }
 }

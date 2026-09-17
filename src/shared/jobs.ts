@@ -1,4 +1,5 @@
 import type { Result } from './result'
+import type { WorkflowRuntimeEvent } from './runtime'
 
 export type JobStatus = 'queued' | 'running' | 'waiting_human' | 'succeeded' | 'failed' | 'cancelled'
 
@@ -14,5 +15,8 @@ export interface JobRecord {
 }
 
 export interface JobsApiContract {
-  list(): Promise<Result<JobRecord[]>>
+  list(recover?: boolean): Promise<Result<JobRecord[]>>
+  cancel(jobId: string): Promise<Result<null>>
+  retry(jobId: string): Promise<Result<string>>
+  onEvent(listener: (event: WorkflowRuntimeEvent) => void): () => void
 }

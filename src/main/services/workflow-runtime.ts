@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import type { Workflow } from '../../shared/workflow'
 import { validateWorkflow } from './workflow-validation'
-import type { NodeExecutionResult, NodeExecutor, NodeRun, RuntimeOptions, RuntimeResult, WorkflowRun } from '../../shared/runtime'
+import type { NodeExecutionResult, NodeExecutor, NodeRun, RuntimeOptions, RuntimeResult, WorkflowRun, NodeInputEnvelope, WorkflowSideEffect, WorkflowSideEffectClaim } from '../../shared/runtime'
+import { redactSensitive } from './errors'
 
 export async function executeWorkflow(workflow: Workflow, executor: NodeExecutor, options: RuntimeOptions = {}): Promise<RuntimeResult> {
-  const issues = validateWorkflow(workflow)
+  const issues = validateWorkflow(workflow, options.allowedNodeTypes)
   if (issues.length) throw new Error(`Workflow 无法执行: ${issues.map((issue) => issue.message).join('；')}`)
   const variables = resolveWorkflowVariables(workflow, options.variables ?? {})
   const state = options.initialState ? cloneState(options.initialState) : createState(workflow, options.runId, options.relPath, options.sceneId)
@@ -39,35 +40,115 @@ async function runNode(node: Workflow['nodes'][number], incoming: Workflow['edge
   const input = Object.fromEntries(incoming.map((edge) => [edge.targetPort, state.outputs[edge.source]]))
   const config = resolveWorkflowValue(node.config, variables) as Record<string, unknown>
   const idempotencyKey = nodeState.idempotencyKey ?? `${state.id}:${node.id}`
+  const priorOutputs = { ...state.outputs }
+  const inheritedContext = options.resolveContext?.(priorOutputs)
+  const inputEnvelope: NodeInputEnvelope = { value: input, ...(inheritedContext === undefined ? {} : { context: inheritedContext }), outputs: priorOutputs }
   nodeState.idempotencyKey = idempotencyKey
+  const persistedEffect = state.sideEffects?.[idempotencyKey]
+  if (persistedEffect?.status === 'succeeded') {
+    nodeState.input = input
+    nodeState.inputSummary = summarizeNodeValue(input)
+    nodeState.output = persistedEffect.output
+    nodeState.outputSummary = summarizeNodeValue(persistedEffect.output)
+    nodeState.status = 'succeeded'
+    nodeState.finishedAt = new Date().toISOString()
+    nodeState.log = ['复用已持久化的节点副作用']
+    state.outputs[node.id] = persistedEffect.output
+    await persist(options, state)
+    return { nodeId: node.id, status: 'succeeded' }
+  }
   if (node.type === 'logic.condition' && config['condition'] === false) {
     nodeState.input = input; nodeState.status = 'skipped'; nodeState.log = ['condition=false']; nodeState.finishedAt = new Date().toISOString(); await persist(options, state)
     return { nodeId: node.id, status: 'skipped' }
   }
+  let sideEffectClaim: Extract<WorkflowSideEffectClaim, { kind: 'execute' }> | undefined
+  if (options.sideEffectStore) {
+    const claim = await options.sideEffectStore.claimSideEffect(idempotencyKey, state.id, node.id)
+    if (claim.kind === 'succeeded') return applyPersistedSideEffect(node, nodeState, input, state, options, claim.effect)
+    if (claim.kind === 'in_progress') {
+      const effect = await waitForSideEffect(options.sideEffectStore, idempotencyKey, options.sideEffectWaitMs)
+      if (!effect) {
+        const error = `Workflow side-effect 正在其他进程执行且未完成: ${idempotencyKey}`
+        nodeState.input = input
+        nodeState.inputSummary = summarizeNodeValue(input)
+        nodeState.status = 'failed'
+        nodeState.error = error
+        nodeState.diagnostics = { errorCategory: 'io' }
+        nodeState.finishedAt = new Date().toISOString()
+        nodeState.log = [error]
+        await persist(options, state)
+        return { nodeId: node.id, status: 'failed' }
+      }
+      return applyPersistedSideEffect(node, nodeState, input, state, options, effect)
+    }
+    sideEffectClaim = claim
+  }
+  const leaseTimer = sideEffectClaim && options.sideEffectStore?.renewSideEffect
+    ? setInterval(() => { void options.sideEffectStore?.renewSideEffect?.(sideEffectClaim!.claimId, idempotencyKey).catch(() => undefined) }, 20_000)
+    : undefined
+  const stopLease = () => { if (leaseTimer) clearInterval(leaseTimer) }
   nodeState.input = input; nodeState.inputSummary = summarizeNodeValue(input); nodeState.status = 'running'; nodeState.startedAt = new Date().toISOString(); nodeState.log = []; nodeState.error = undefined
   await persist(options, state)
   const configuredRetry = config['retry']
   const policyRetry = options.retryForNode?.(node)
   const nodeRetry = typeof configuredRetry === 'number' && Number.isFinite(configuredRetry) ? Math.min(5, Math.max(0, Math.trunc(configuredRetry))) : typeof policyRetry === 'number' && Number.isFinite(policyRetry) ? Math.min(5, Math.max(0, Math.trunc(policyRetry))) : 0
   const maxAttempts = Math.max(1, nodeRetry + (options.retry ?? 0) + 1)
+  let externalEffectProduced = false
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     nodeState.attempts = attempt
     const nodeController = new AbortController()
     const abortParent = () => nodeController.abort()
     options.signal?.addEventListener('abort', abortParent, { once: true })
     try {
-      const result = await withTimeout(executor({ nodeId: node.id, input, outputs: { ...state.outputs }, config, idempotencyKey, inheritedContext: options.resolveContext?.(state.outputs), signal: nodeController.signal }), nodeTimeout({ ...node, config }, options.timeoutMs), options.signal, () => nodeController.abort())
-      nodeState.log.push(...(result.log ?? [])); nodeState.finishedAt = new Date().toISOString(); nodeState.diagnostics = { ...result.diagnostics, durationMs: new Date(nodeState.finishedAt).getTime() - new Date(nodeState.startedAt ?? nodeState.finishedAt).getTime() }
+      const result = await withTimeout(executor({ nodeId: node.id, input, inputEnvelope, outputs: priorOutputs, config, idempotencyKey, inheritedContext, signal: nodeController.signal }), nodeTimeout({ ...node, config }, options.timeoutMs), options.signal, () => nodeController.abort())
+      nodeState.log.push(...(result.log ?? []).map((entry) => redactSensitive(String(entry)))); nodeState.finishedAt = new Date().toISOString(); nodeState.diagnostics = { ...result.diagnostics, durationMs: new Date(nodeState.finishedAt).getTime() - new Date(nodeState.startedAt ?? nodeState.finishedAt).getTime() }
       nodeState.output = result.output; nodeState.outputSummary = summarizeNodeValue(result.output); state.outputs[node.id] = result.output
-      if (result.status === 'waiting_human') { nodeState.status = 'waiting_human'; return { nodeId: node.id, status: nodeState.status } }
-      nodeState.status = 'succeeded'; return { nodeId: node.id, status: nodeState.status }
+      if (result.status === 'waiting_human') { if (sideEffectClaim) await options.sideEffectStore?.releaseSideEffect(sideEffectClaim.claimId, idempotencyKey); stopLease(); nodeState.status = 'waiting_human'; return { nodeId: node.id, status: nodeState.status } }
+      nodeState.status = 'succeeded'
+      state.sideEffects = { ...state.sideEffects, [idempotencyKey]: { status: 'succeeded', output: result.output } }
+      // Persist the result before closing the external ledger claim. If the
+      // process dies between the provider side effect and ledger completion,
+      // the same Run can recover from its durable output without executing the
+      // provider again. The ledger remains leased until completion succeeds,
+      // so an uncertain claim is never released as if no effect happened.
+      externalEffectProduced = true
+      await persist(options, state)
+      if (sideEffectClaim) await options.sideEffectStore?.completeSideEffect(sideEffectClaim.claimId, idempotencyKey, result.output)
+      stopLease(); await persist(options, state)
+      return { nodeId: node.id, status: nodeState.status }
     } catch (error) {
-      nodeState.error = error instanceof Error ? error.message : String(error); const errorCode = typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : undefined; nodeState.diagnostics = { ...nodeState.diagnostics, errorCode, errorCategory: classifyNodeError(error, options.signal?.aborted) }; nodeState.log.push(nodeState.error)
-      if (options.signal?.aborted) { nodeState.status = 'cancelled'; nodeState.finishedAt = new Date().toISOString(); return { nodeId: node.id, status: nodeState.status } }
-      if (attempt === maxAttempts) { nodeState.status = 'failed'; nodeState.finishedAt = new Date().toISOString(); return { nodeId: node.id, status: nodeState.status } }
+      nodeState.error = redactSensitive(error instanceof Error ? error.message : String(error)); const errorCode = typeof (error as { code?: unknown })?.code === 'string' ? (error as { code: string }).code : undefined; nodeState.diagnostics = { ...nodeState.diagnostics, errorCode, errorCategory: classifyNodeError(error, options.signal?.aborted) }; nodeState.log.push(nodeState.error)
+      if (options.signal?.aborted) { if (sideEffectClaim) await options.sideEffectStore?.releaseSideEffect(sideEffectClaim.claimId, idempotencyKey); stopLease(); nodeState.status = 'cancelled'; nodeState.finishedAt = new Date().toISOString(); return { nodeId: node.id, status: nodeState.status } }
+      if (externalEffectProduced) { stopLease(); nodeState.status = 'failed'; nodeState.finishedAt = new Date().toISOString(); return { nodeId: node.id, status: nodeState.status } }
+      if (attempt === maxAttempts) { if (sideEffectClaim) await options.sideEffectStore?.releaseSideEffect(sideEffectClaim.claimId, idempotencyKey); stopLease(); nodeState.status = 'failed'; nodeState.finishedAt = new Date().toISOString(); return { nodeId: node.id, status: nodeState.status } }
     } finally { options.signal?.removeEventListener('abort', abortParent) }
   }
+  stopLease()
   return { nodeId: node.id, status: 'failed' }
+}
+
+async function applyPersistedSideEffect(node: Workflow['nodes'][number], nodeState: NodeRun, input: unknown, state: WorkflowRun, options: RuntimeOptions, effect: WorkflowSideEffect): Promise<{ nodeId: string; status: 'succeeded' }> {
+  nodeState.input = input
+  nodeState.inputSummary = summarizeNodeValue(input)
+  nodeState.output = effect.output
+  nodeState.outputSummary = summarizeNodeValue(effect.output)
+  nodeState.status = 'succeeded'
+  nodeState.finishedAt = new Date().toISOString()
+  nodeState.log = ['复用已持久化的节点副作用']
+  state.outputs[node.id] = effect.output
+  state.sideEffects = { ...state.sideEffects, [nodeState.idempotencyKey ?? `${state.id}:${node.id}`]: effect }
+  await persist(options, state)
+  return { nodeId: node.id, status: 'succeeded' }
+}
+
+async function waitForSideEffect(store: NonNullable<RuntimeOptions['sideEffectStore']>, idempotencyKey: string, waitMs = 30_000): Promise<WorkflowSideEffect | undefined> {
+  const deadline = Date.now() + Math.max(250, Math.min(waitMs, 120_000))
+  while (Date.now() < deadline) {
+    const effect = await store.getSideEffect(idempotencyKey)
+    if (effect) return effect
+    await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  return store.getSideEffect(idempotencyKey)
 }
 
 const VARIABLE_NAME = /^[A-Za-z][A-Za-z0-9_.-]*$/
@@ -122,7 +203,23 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number, signal?: 
 function createState(workflow: Workflow, runId?: string, relPath?: string, sceneId?: string): WorkflowRun { const now = new Date().toISOString(); const id = runId ?? `run_${randomUUID()}`; return { id, workflowId: workflow.id, ...(relPath ? { relPath } : {}), ...(sceneId ? { sceneId } : {}), status: 'running', nodes: Object.fromEntries(workflow.nodes.map((node) => [node.id, { nodeId: node.id, status: 'pending', input: {}, attempts: 0, idempotencyKey: `${id}:${node.id}`, log: [] }])), outputs: {}, createdAt: now, updatedAt: now } }
 function cloneState(state: WorkflowRun): WorkflowRun { return JSON.parse(JSON.stringify(state)) as WorkflowRun }
 async function persist(options: RuntimeOptions, state: WorkflowRun) { state.updatedAt = new Date().toISOString(); await options.persist?.(state) }
-async function finish(state: WorkflowRun, status: WorkflowRun['status'], options: RuntimeOptions, error?: string, waitingNodeId?: string): Promise<RuntimeResult> { state.status = status; if (error) state.nodes[Object.keys(state.nodes).find((id) => state.nodes[id].status === 'running') ?? Object.keys(state.nodes)[0]].error = error; await persist(options, state); return { state, waitingNodeId } }
+async function finish(state: WorkflowRun, status: WorkflowRun['status'], options: RuntimeOptions, error?: string, waitingNodeId?: string): Promise<RuntimeResult> {
+  state.status = status
+  if (error) {
+    const blockedNodeId = Object.keys(state.nodes).find((id) => state.nodes[id].status === 'pending')
+      ?? Object.keys(state.nodes).find((id) => state.nodes[id].status === 'running')
+    if (blockedNodeId) {
+      const node = state.nodes[blockedNodeId]
+      node.status = 'failed'
+      node.error = error
+      node.diagnostics = { ...node.diagnostics, errorCategory: 'validation' }
+      node.finishedAt = new Date().toISOString()
+      node.log = [...node.log, error]
+    }
+  }
+  await persist(options, state)
+  return { state, waitingNodeId }
+}
 
 function summarizeNodeValue(value: unknown, depth = 0): string {
   if (value === undefined) return 'undefined'

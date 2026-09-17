@@ -1,0 +1,122 @@
+schemaVersion: 1
+phase: chapter_writing
+createdAt: 2026-09-15T00:00:00.000Z
+updatedAt: 2026-09-17T02:22:21.986Z
+premise:
+  completed: true
+  genre: 都市悬疑 / 成长
+  targetWordCount: 40000
+bible:
+  completed: true
+  entityCount: 7
+  timelineCount: 1
+  artifactCount: 2
+outline:
+  completed: true
+  actCount: 3
+  plannedChapterCount: 14
+chapters:
+  - number: 1
+    title: 录音里的求救声
+    relPath: chapters/001-录音里的求救声.md
+    status: draft
+    wordCount: 2072
+    targetWords: 2858
+    plan: 建立林岚的修复店、父亲失踪的旧伤和匿名包裹；在结尾恢复出“灯塔下的第二个门”。
+  - number: 2
+    title: 没有寄件人的包裹
+    relPath: chapters/002-没有寄件人的包裹.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 追查包裹投递路线，确认旧邮局和蓝漆线索，把私人调查推向旧港区。
+  - number: 3
+    title: 回放噪声的人
+    relPath: chapters/003-回放噪声的人.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 确认磁带经过二次剪辑；第三个声音报出林岚童年的昵称。
+  - number: 4
+    title: 潮线以下
+    relPath: chapters/004-潮线以下.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 找到旧港区潮汐测绘记录，发现父亲账本里的重复收费和最低潮线索。
+  - number: 5
+    title: 修复一段沉默
+    relPath: chapters/005-修复一段沉默.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 还原第三个声音的上下文，让磁带指向地图上不存在的地下室。
+  - number: 6
+    title: 父亲的借据
+    relPath: chapters/006-父亲的借据.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 通过借据和旧照片理解父亲的经济压力，出现第二扇门的编号。
+  - number: 7
+    title: 雾港不记录夜晚
+    relPath: chapters/007-雾港不记录夜晚.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 重建十五年前事故当夜的时间线，找到被删除的港务广播。
+  - number: 8
+    title: 顾深的条件
+    relPath: chapters/008-顾深的条件.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 让顾深说出与林诚的约定，以磁带复制品换来旧钥匙。
+  - number: 9
+    title: 第二个门
+    relPath: chapters/009-第二个门.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 在最低潮前进入灯塔地下空间，发现门后正在播放另一盘磁带。
+  - number: 10
+    title: 失真的证词
+    relPath: chapters/010-失真的证词.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 辨认门内录音与原带的关系，发现父亲曾替仍在雾港生活的人隐瞒事实。
+  - number: 11
+    title: 谁在保存真相
+    relPath: chapters/011-谁在保存真相.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 在公开证据和保护受害者家属之间做选择，名单出现林岚自己的名字。
+  - number: 12
+    title: 潮水进门
+    relPath: chapters/012-潮水进门.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 取出完整证物，证明父亲不是事故主谋，但真正主谋仍控制港区档案。
+  - number: 13
+    title: 回放之前
+    relPath: chapters/013-回放之前.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 让证人和家属共同决定证据去向，只公开经过验证的事实。
+  - number: 14
+    title: 雾散之后
+    relPath: chapters/014-雾散之后.md
+    status: planned
+    wordCount: 0
+    targetWords: 2858
+    plan: 完成父亲的修复工作，接受无法追回的过去，并留下新的潮响。
+canon:
+  pendingProposals: 0
+revision:
+  completed: false
+export:
+  completed: false

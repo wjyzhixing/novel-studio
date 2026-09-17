@@ -10,7 +10,7 @@ abstract class HttpProvider implements LLMProvider {
   abstract listModels(signal?: AbortSignal): Promise<ModelInfo[]>
   abstract chat(req: ChatRequest, signal?: AbortSignal): Promise<ChatResult>
   abstract embed(texts: string[], signal?: AbortSignal): Promise<EmbeddingResult>
-  async structured<T>(req: StructuredRequest<T>, signal?: AbortSignal): Promise<T> { return req.parse((await this.chat(req.request, signal)).text) }
+  async structured<T>(req: StructuredRequest<T>, signal?: AbortSignal): Promise<T> { return req.parse((await this.chat({ ...req.request, ...(req.responseSchema ? { responseSchema: req.responseSchema } : {}) }, signal)).text) }
   abstract stream(req: ChatRequest, signal?: AbortSignal): AsyncIterable<ChatEvent>
 }
 
@@ -55,7 +55,16 @@ export class OpenAICompatibleProvider extends HttpProvider {
     yield { type: 'done', result: { text, model: this.profile.model, requestId, usage } }
   }
   private headers(key: string) { return { Authorization: `Bearer ${key}` } }
-  private body(req: ChatRequest, stream: boolean) { return { model: this.profile.model, messages: req.messages, temperature: req.temperature ?? this.profile.temperature, max_tokens: req.maxOutputTokens ?? this.profile.maxOutputTokens, stream } }
+  private body(req: ChatRequest, stream: boolean) {
+    return {
+      model: this.profile.model,
+      messages: req.messages,
+      temperature: req.temperature ?? this.profile.temperature,
+      max_tokens: req.maxOutputTokens ?? this.profile.maxOutputTokens,
+      stream,
+      ...(req.responseSchema ? { response_format: { type: 'json_schema', json_schema: { name: req.responseSchema.name, strict: req.responseSchema.strict ?? true, schema: req.responseSchema.schema } } } : {})
+    }
+  }
 }
 
 export class AnthropicProvider extends HttpProvider {
@@ -70,12 +79,12 @@ export class AnthropicProvider extends HttpProvider {
   async chat(req: ChatRequest, signal?: AbortSignal) {
     const system = req.messages.find((message) => message.role === 'system')?.content
     const messages = req.messages.filter((message) => message.role !== 'system').map((message) => ({ role: message.role, content: message.content }))
-    const response = await this.fetcher(`${this.baseURL()}/messages`, { method: 'POST', headers: { 'x-api-key': await this.key(), 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: this.profile.model, system, messages, max_tokens: req.maxOutputTokens ?? this.profile.maxOutputTokens, temperature: req.temperature ?? this.profile.temperature }), signal })
+    const response = await this.fetcher(`${this.baseURL()}/messages`, { method: 'POST', headers: { 'x-api-key': await this.key(), 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' }, body: JSON.stringify({ model: this.profile.model, system, messages, max_tokens: req.maxOutputTokens ?? this.profile.maxOutputTokens, temperature: req.temperature ?? this.profile.temperature, ...(req.responseSchema ? { output_config: { format: { type: 'json_schema', schema: req.responseSchema.schema } } } : {}) }), signal })
     if (!response.ok) throw new Error(`Anthropic Provider 请求失败 (${response.status})`)
     const body = await response.json() as { id?: string; content?: Array<{ text?: string }>; usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } }
     return { text: body.content?.map((item) => item.text ?? '').join('') ?? '', model: this.profile.model, requestId: body.id, usage: anthropicUsage(body.usage) }
   }
-  async embed(): Promise<EmbeddingResult> { throw new Error('Anthropic Provider 不支持 Embedding') }
+  async embed(_texts: string[], _signal?: AbortSignal): Promise<EmbeddingResult> { throw new Error('Anthropic Provider 不支持 Embedding') }
   async *stream(req: ChatRequest, signal?: AbortSignal) {
     const system = req.messages.find((message) => message.role === 'system')?.content
     const messages = req.messages.filter((message) => message.role !== 'system').map((message) => ({ role: message.role, content: message.content }))
@@ -94,7 +103,7 @@ export class GeminiProvider extends HttpProvider {
   readonly profile: ProviderProfile
   constructor(profile: ProviderProfile, secretStore: SecretStore, fetcher?: FetchLike) { super(secretStore, fetcher); this.profile = profile }
   async listModels(signal?: AbortSignal) {
-    const response = await this.fetcher(`${this.baseURL()}/models?key=${encodeURIComponent(await this.key())}`, { headers: { 'Content-Type': 'application/json' }, signal })
+    const response = await this.fetcher(`${this.baseURL()}/models`, { headers: this.headers(await this.key()), signal })
     if (!response.ok) throw new Error(`Gemini Provider 请求失败 (${response.status})`)
     const body = await response.json() as { models?: Array<{ name?: string; displayName?: string; inputTokenLimit?: number }> }
     return (body.models ?? []).flatMap((model) => {
@@ -105,16 +114,16 @@ export class GeminiProvider extends HttpProvider {
   async chat(req: ChatRequest, signal?: AbortSignal) {
     const system = req.messages.find((message) => message.role === 'system')?.content
     const contents = req.messages.filter((message) => message.role !== 'system').map((message) => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] }))
-    const response = await this.fetcher(`${this.baseURL()}/models/${encodeURIComponent(this.profile.model)}:generateContent?key=${encodeURIComponent(await this.key())}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: system ? { parts: [{ text: system }] } : undefined, contents, generationConfig: { temperature: req.temperature ?? this.profile.temperature, maxOutputTokens: req.maxOutputTokens ?? this.profile.maxOutputTokens } }), signal })
+    const response = await this.fetcher(`${this.baseURL()}/models/${encodeURIComponent(this.profile.model)}:generateContent`, { method: 'POST', headers: this.headers(await this.key()), body: JSON.stringify({ systemInstruction: system ? { parts: [{ text: system }] } : undefined, contents, generationConfig: { temperature: req.temperature ?? this.profile.temperature, maxOutputTokens: req.maxOutputTokens ?? this.profile.maxOutputTokens, ...(req.responseSchema ? { responseMimeType: 'application/json', responseSchema: req.responseSchema.schema } : {}) } }), signal })
     if (!response.ok) throw new Error(`Gemini Provider 请求失败 (${response.status})`)
     const body = await response.json() as { responseId?: string; candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } }
     return { text: body.candidates?.[0]?.content?.parts?.map((part) => part.text ?? '').join('') ?? '', model: this.profile.model, requestId: body.responseId, usage: geminiUsage(body.usageMetadata) }
   }
-  async embed(): Promise<EmbeddingResult> { throw new Error('Gemini Provider 不支持 Embedding') }
+  async embed(_texts: string[], _signal?: AbortSignal): Promise<EmbeddingResult> { throw new Error('Gemini Provider 不支持 Embedding') }
   async *stream(req: ChatRequest, signal?: AbortSignal) {
     const system = req.messages.find((message) => message.role === 'system')?.content
     const contents = req.messages.filter((message) => message.role !== 'system').map((message) => ({ role: message.role === 'assistant' ? 'model' : 'user', parts: [{ text: message.content }] }))
-    const response = await this.fetcher(`${this.baseURL()}/models/${encodeURIComponent(this.profile.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(await this.key())}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ systemInstruction: system ? { parts: [{ text: system }] } : undefined, contents, generationConfig: { temperature: req.temperature ?? this.profile.temperature, maxOutputTokens: req.maxOutputTokens ?? this.profile.maxOutputTokens } }), signal })
+    const response = await this.fetcher(`${this.baseURL()}/models/${encodeURIComponent(this.profile.model)}:streamGenerateContent?alt=sse`, { method: 'POST', headers: this.headers(await this.key()), body: JSON.stringify({ systemInstruction: system ? { parts: [{ text: system }] } : undefined, contents, generationConfig: { temperature: req.temperature ?? this.profile.temperature, maxOutputTokens: req.maxOutputTokens ?? this.profile.maxOutputTokens } }), signal })
     if (!response.ok || !response.body) { yield { type: 'error' as const, message: `Gemini Provider 请求失败 (${response.status})` }; return }
     let text = ''; let usage: TokenUsage | undefined
     for await (const line of readSse(response.body)) {
@@ -122,12 +131,18 @@ export class GeminiProvider extends HttpProvider {
     }
     yield { type: 'done' as const, result: { text, model: this.profile.model, usage } }
   }
+  private headers(key: string) { return { 'x-goog-api-key': key, 'Content-Type': 'application/json' } }
   private baseURL() { return (this.profile.baseURL ?? 'https://generativelanguage.googleapis.com/v1beta').replace(/\/$/, '') }
 }
 export class MockProvider implements LLMProvider {
   constructor(readonly profile: ProviderProfile) {}
   async listModels() { return [{ id: profileModel(this.profile), displayName: 'Deterministic mock' }] }
-  async chat(req: ChatRequest) { const text = `mock: ${req.messages.at(-1)?.content ?? ''}`; return { text, model: profileModel(this.profile), requestId: 'mock-request', usage: { inputTokens: estimateTokens(req.messages.map((message) => message.content).join('')), outputTokens: estimateTokens(text), totalTokens: estimateTokens(req.messages.map((message) => message.content).join('')) + estimateTokens(text) } } }
+  async chat(req: ChatRequest) {
+    const systemPrompt = req.messages.find((message) => message.role === 'system')?.content ?? ''
+    const isDraftAgent = /(?:小说 Writer|Rewrite Agent|可替换正文|输出正文)/i.test(systemPrompt)
+    const text = isDraftAgent ? '雨声落在旧路上，人物继续向前。' : `mock: ${req.messages.at(-1)?.content ?? ''}`
+    return { text, model: profileModel(this.profile), requestId: 'mock-request', usage: { inputTokens: estimateTokens(req.messages.map((message) => message.content).join('')), outputTokens: estimateTokens(text), totalTokens: estimateTokens(req.messages.map((message) => message.content).join('')) + estimateTokens(text) } }
+  }
   async embed(texts: string[]): Promise<EmbeddingResult> { return { vectors: texts.map(deterministicEmbedding), model: profileModel(this.profile), requestId: 'mock-embedding-request' } }
   async structured<T>(req: StructuredRequest<T>) {
     const input = req.request.messages.map((message) => message.content).join('\n')

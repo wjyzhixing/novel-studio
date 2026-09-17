@@ -29,4 +29,5 @@ export interface DiagnosticsBundle {
 
 export interface DiagnosticsApiContract {
   export(destination: string): Promise<Result<{ destination: string; runCount: number; invocationCount: number }>>
+  exportCompressed(destination: string): Promise<Result<{ destination: string; runCount: number; invocationCount: number }>>
 }

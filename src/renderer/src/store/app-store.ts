@@ -5,6 +5,8 @@ import type { AiSuggestion } from '../../../shared/ai-edit'
 import { countWords } from '../lib/wordcount'
 import type { ChapterScene, SceneCreateInput, SceneUpdateInput } from '../../../shared/scene'
 import type { Volume, VolumeCreateInput, VolumeUpdateInput } from '../../../shared/volume'
+import { DEFAULT_UI_LOCALE, getUiText, readUiLocale, type UiTextKey } from '../lib/i18n'
+import { clearDraft, draftStorageKey, readDraft, writeDraft } from '../lib/autosave-draft'
 
 export type AppScreen = 'loading' | 'welcome' | 'workbench'
 export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error'
@@ -31,6 +33,8 @@ interface AppState {
   editorMarkdown: string
   editorSelection: string
   editorSelectionSnapshot: EditorSelectionSnapshot | null
+  editorSelectionActive: boolean
+  editorSelectionConfirmed: boolean
   saveStatus: SaveStatus
   liveWordCount: number
   pendingSuggestion: AiSuggestion | null
@@ -57,6 +61,8 @@ interface AppState {
   setEditorMarkdown(markdown: string): void
   setEditorSelection(selection: string): void
   setEditorSelectionSnapshot(snapshot: EditorSelectionSnapshot | null): void
+  setEditorSelectionActive(active: boolean): void
+  setEditorSelectionConfirmed(confirmed: boolean): void
   setPendingSuggestion(suggestion: AiSuggestion | null): void
   acceptPendingSuggestion(): Promise<boolean>
   saveActiveChapter(): Promise<void>
@@ -76,6 +82,11 @@ interface AppState {
   reorderVolumes(volumeIds: string[]): Promise<boolean>
 }
 
+function localizedStoreText(key: UiTextKey, values: Record<string, string | number> = {}): string {
+  const locale = typeof localStorage === 'undefined' ? DEFAULT_UI_LOCALE : readUiLocale(localStorage)
+  return Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), getUiText(locale, key))
+}
+
 function unwrapError(prefix: string, r: { ok: false; error: { code: string; message: string } } | { ok: true }): string {
   return r.ok ? '' : `${prefix}[${r.error.code}] ${r.error.message}`
 }
@@ -86,6 +97,10 @@ let editVersion = 0
 let savePromise: Promise<void> | null = null
 let bootstrapPromise: Promise<void> | null = null
 let chapterOpenVersion = 0
+
+function draftStorage(): Storage | null {
+  return typeof localStorage === 'undefined' ? null : localStorage
+}
 
 /** Project lifecycle + chapter authoring state (Sprint 1 + Sprint 2). */
 export const useAppStore = create<AppState>((set, get) => ({
@@ -103,6 +118,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   editorMarkdown: '',
   editorSelection: '',
   editorSelectionSnapshot: null,
+  editorSelectionActive: false,
+  editorSelectionConfirmed: false,
   saveStatus: 'saved',
   liveWordCount: 0,
   pendingSuggestion: null,
@@ -118,7 +135,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       if (typeof window === 'undefined' || !window.novelAPI) {
         set({
           screen: 'welcome',
-          notice: 'preload 桥未加载（novelAPI 不存在）。如果是开发环境请重启 electron-vite dev。'
+          notice: localizedStoreText('preloadBridgeMissing')
         })
         return
       }
@@ -145,7 +162,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ recents: list, screen: 'welcome' })
       } catch (e) {
         set({ initializing: false })
-        const notice = `启动失败: ${e instanceof Error ? e.message : String(e)}`
+        const notice = localizedStoreText('startupFailed', { error: e instanceof Error ? e.message : String(e) })
         // A late bootstrap failure must not demote an already recovered
         // workbench to Welcome. Keep the project visible and surface the
         // recoverable error instead.
@@ -162,24 +179,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const r = await window.novelAPI.project.listRecent()
       if (r.ok) set({ recents: r.data })
-      else set({ notice: unwrapError('读取最近项目失败', r) })
-    } catch (e) { set({ notice: `读取最近项目失败: ${e instanceof Error ? e.message : String(e)}` }) }
+      else set({ notice: unwrapError(localizedStoreText('recentProjectsLoadFailed'), r) })
+    } catch (e) { set({ notice: `${localizedStoreText('recentProjectsLoadFailed')}: ${e instanceof Error ? e.message : String(e)}` }) }
   },
 
   async createProject(rootPath, title) {
     if (!rootPath || !title.trim()) {
-      set({ notice: '请填写项目名并选择一个空文件夹' })
+      set({ notice: localizedStoreText('projectNameRequired') })
       return false
     }
     set({ busy: true, notice: null })
     try {
       const r = await window.novelAPI.project.create({ rootPath, title: title.trim() })
-      if (!r.ok) { set({ notice: unwrapError('创建失败', r) }); return false }
+      if (!r.ok) { set({ notice: unwrapError(localizedStoreText('projectCreateFailed'), r) }); return false }
       set({ project: r.data, screen: 'workbench', initializing: true })
       await Promise.all([get().loadChapters(), get().loadVolumes(), get().refreshRecents()])
       set({ initializing: false })
       return true
-    } catch (e) { set({ notice: `创建失败: ${e instanceof Error ? e.message : String(e)}` }); return false }
+    } catch (e) { set({ notice: `${localizedStoreText('projectCreateFailed')}: ${e instanceof Error ? e.message : String(e)}` }); return false }
     finally { set({ busy: false }) }
   },
 
@@ -188,12 +205,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ busy: true, notice: null })
     try {
       const r = await window.novelAPI.project.open(rootPath)
-      if (!r.ok) { set({ notice: unwrapError('打开失败', r) }); return false }
+      if (!r.ok) { set({ notice: unwrapError(localizedStoreText('projectOpenFailed'), r) }); return false }
       set({ project: r.data, screen: 'workbench', initializing: true })
       await Promise.all([get().loadChapters(), get().loadVolumes(), get().refreshRecents()])
       set({ initializing: false })
       return true
-    } catch (e) { set({ notice: `打开失败: ${e instanceof Error ? e.message : String(e)}` }); return false }
+    } catch (e) { set({ notice: `${localizedStoreText('projectOpenFailed')}: ${e instanceof Error ? e.message : String(e)}` }); return false }
     finally { set({ busy: false }) }
   },
 
@@ -201,58 +218,70 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ busy: true, notice: null })
     try {
       const r = await window.novelAPI.project.seedMockStory()
-      if (!r.ok) { set({ notice: unwrapError('载入示例失败', r) }); return false }
+      if (!r.ok) { set({ notice: unwrapError(localizedStoreText('mockStoryLoadFailed'), r) }); return false }
       await get().loadChapters()
       await get().loadVolumes()
       const first = get().chapters[0]
       if (first) await get().openChapter(first.relPath)
       return true
-    } catch (e) { set({ notice: `载入示例失败: ${e instanceof Error ? e.message : String(e)}` }); return false }
+    } catch (e) { set({ notice: `${localizedStoreText('mockStoryLoadFailed')}: ${e instanceof Error ? e.message : String(e)}` }); return false }
     finally { set({ busy: false }) }
   },
 
   async closeProject() {
-    await get().flushAutosave()
-    editVersion += 1
-    await window.novelAPI.project.close()
-    set({
-      project: null,
-      screen: 'welcome',
-      chapters: [],
-      volumes: [],
-      activeChapter: null,
-      activeRelPath: null,
-      editorMarkdown: '',
-      editorSelection: '',
-      editorSelectionSnapshot: null,
-      saveStatus: 'saved',
-      notice: null,
-      scenes: [],
-      selectedSceneId: null,
-      sceneMessage: null
-    })
-    await get().refreshRecents()
+    try {
+      await get().flushAutosave()
+      if (get().saveStatus === 'error') return
+      editVersion += 1
+      await window.novelAPI.project.close()
+      set({
+        project: null,
+        screen: 'welcome',
+        chapters: [],
+        volumes: [],
+        activeChapter: null,
+        activeRelPath: null,
+        editorMarkdown: '',
+        editorSelection: '',
+        editorSelectionSnapshot: null,
+        editorSelectionActive: false,
+        editorSelectionConfirmed: false,
+        saveStatus: 'saved',
+        notice: null,
+        scenes: [],
+        selectedSceneId: null,
+        sceneMessage: null
+      })
+      await get().refreshRecents()
+    } catch (error) {
+      set({ notice: `${localizedStoreText('projectCloseFailed')}: ${error instanceof Error ? error.message : String(error)}` })
+    }
   },
 
   async removeRecent(path) {
-    await window.novelAPI.project.removeRecent(path)
-    await get().refreshRecents()
+    try {
+      const result = await window.novelAPI.project.removeRecent(path)
+      if (!result.ok) { set({ notice: unwrapError(localizedStoreText('recentProjectRemoveFailed'), result) }); return }
+      await get().refreshRecents()
+    } catch (error) {
+      set({ notice: `${localizedStoreText('recentProjectRemoveFailed')}: ${error instanceof Error ? error.message : String(error)}` })
+    }
   },
 
   async loadChapters() {
     try {
       const r = await window.novelAPI.chapter.list()
       if (r.ok) set({ chapters: r.data })
-      else set({ notice: unwrapError('读取章节失败', r) })
-    } catch (e) { set({ notice: `读取章节失败: ${e instanceof Error ? e.message : String(e)}` }) }
+      else set({ notice: unwrapError(localizedStoreText('chapterListFailed'), r) })
+    } catch (e) { set({ notice: `${localizedStoreText('chapterListFailed')}: ${e instanceof Error ? e.message : String(e)}` }) }
   },
 
   async loadVolumes() {
     try {
       const result = await window.novelAPI.volume.list()
       if (result.ok) set({ volumes: result.data })
-      else set({ notice: `读取卷失败：${result.error.message}` })
-    } catch (error) { set({ notice: `读取卷失败：${error instanceof Error ? error.message : String(error)}` }) }
+      else set({ notice: `${localizedStoreText('volumeListFailed')}：${result.error.message}` })
+    } catch (error) { set({ notice: `${localizedStoreText('volumeListFailed')}: ${error instanceof Error ? error.message : String(error)}` }) }
   },
 
   async openChapter(relPath) {
@@ -260,22 +289,29 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       await get().flushAutosave()
       const r = await window.novelAPI.chapter.read(relPath)
-      if (!r.ok) { set({ notice: unwrapError('打开章节失败', r) }); return }
+      if (!r.ok) { set({ notice: unwrapError(localizedStoreText('chapterOpenFailed'), r) }); return }
       if (requestVersion !== chapterOpenVersion) return
       const known = get().chapters.find((c) => c.relPath === relPath)
-      set({ activeChapter: { relPath: r.data.relPath, number: known?.number ?? 0, title: r.data.title, wordCount: countWords(r.data.markdown), updatedAt: known?.updatedAt ?? new Date().toISOString() }, activeRelPath: relPath, editorMarkdown: r.data.markdown, editorSelection: '', editorSelectionSnapshot: null, pendingSuggestion: null, saveStatus: 'saved', liveWordCount: countWords(r.data.markdown), scenes: [], selectedSceneId: null, sceneMessage: null })
+      const key = get().project?.rootPath ? draftStorageKey(get().project!.rootPath, relPath) : null
+      const storage = draftStorage()
+      const draft = key && storage ? readDraft(storage, key) : null
+      const savedAt = known?.updatedAt ? Date.parse(known.updatedAt) : 0
+      const restoredDraft = draft && draft.markdown !== r.data.markdown && draft.savedAt > (Number.isFinite(savedAt) ? savedAt : 0) ? draft : null
+      const loadedMarkdown = restoredDraft?.markdown ?? r.data.markdown
+      set({ activeChapter: { relPath: r.data.relPath, number: known?.number ?? 0, title: r.data.title, wordCount: countWords(loadedMarkdown), updatedAt: known?.updatedAt ?? new Date().toISOString() }, activeRelPath: relPath, editorMarkdown: loadedMarkdown, editorSelection: '', editorSelectionSnapshot: null, editorSelectionActive: false, editorSelectionConfirmed: false, pendingSuggestion: null, saveStatus: restoredDraft ? 'dirty' : 'saved', liveWordCount: countWords(loadedMarkdown), scenes: [], selectedSceneId: null, sceneMessage: null, notice: restoredDraft ? localizedStoreText('autosaveDraftRecovered') : get().notice })
+      if (restoredDraft) { if (autosaveTimer) clearTimeout(autosaveTimer); autosaveTimer = setTimeout(() => { void get().saveActiveChapter() }, AUTOSAVE_MS) }
       void get().loadScenes(relPath, requestVersion)
       void get().loadChapters()
-    } catch (e) { set({ notice: `打开章节失败: ${e instanceof Error ? e.message : String(e)}` }) }
+    } catch (e) { set({ notice: `${localizedStoreText('chapterOpenFailed')}: ${e instanceof Error ? e.message : String(e)}` }) }
   },
 
   async createChapter(title) {
     if (!title.trim()) return
     try {
       const r = await window.novelAPI.chapter.create(title.trim())
-      if (!r.ok) { set({ notice: unwrapError('新建章节失败', r) }); return }
+      if (!r.ok) { set({ notice: unwrapError(localizedStoreText('chapterCreateFailed'), r) }); return }
       await get().loadChapters(); await get().openChapter(r.data.relPath)
-    } catch (e) { set({ notice: `新建章节失败: ${e instanceof Error ? e.message : String(e)}` }) }
+    } catch (e) { set({ notice: `${localizedStoreText('chapterCreateFailed')}: ${e instanceof Error ? e.message : String(e)}` }) }
   },
 
   async renameChapter(relPath, title) {
@@ -284,24 +320,24 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const current = get().chapters.find((chapter) => chapter.relPath === relPath)
       const result = await window.novelAPI.chapter.rename(relPath, nextTitle)
-      if (!result.ok) { set({ notice: `重命名章节失败：${result.error.message}` }); return false }
+      if (!result.ok) { set({ notice: `${localizedStoreText('chapterRenameFailed')}: ${result.error.message}` }); return false }
       const nextRelPath = result.data.find((chapter) => chapter.number === current?.number)?.relPath
       const active = get().activeRelPath === relPath
-      set({ chapters: result.data, notice: `章节已重命名：${nextTitle}` })
+      set({ chapters: result.data, notice: localizedStoreText('chapterRenamed', { title: nextTitle }) })
       if (active && nextRelPath) {
         await get().openChapter(nextRelPath)
       }
       await get().loadVolumes()
       return true
-    } catch (error) { set({ notice: `重命名章节失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+    } catch (error) { set({ notice: `${localizedStoreText('chapterRenameFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   async moveChapter(relPath, toIndex) {
     try {
       const current = get().chapters.find((chapter) => chapter.relPath === relPath)
       const result = await window.novelAPI.chapter.move(relPath, toIndex)
-      if (!result.ok) { set({ notice: `移动章节失败：${result.error.message}` }); return false }
-      set({ chapters: result.data, notice: '章节顺序已保存' })
+      if (!result.ok) { set({ notice: `${localizedStoreText('chapterMoveFailed')}: ${result.error.message}` }); return false }
+      set({ chapters: result.data, notice: localizedStoreText('chapterOrderSaved') })
       if (get().activeRelPath === relPath && current) {
         const moved = result.data.find((chapter) => chapter.number === Math.min(result.data.length, Math.max(1, toIndex + 1)) && chapter.title === current.title)
         if (moved && moved.relPath !== relPath) {
@@ -310,7 +346,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       await get().loadVolumes()
       return true
-    } catch (error) { set({ notice: `移动章节失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+    } catch (error) { set({ notice: `${localizedStoreText('chapterMoveFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   setEditorMarkdown(markdown) {
@@ -323,8 +359,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       activeChapter: state.activeChapter ? { ...state.activeChapter, wordCount } : state.activeChapter,
       chapters: state.activeRelPath
         ? state.chapters.map((chapter) => chapter.relPath === state.activeRelPath ? { ...chapter, wordCount } : chapter)
-        : state.chapters
+      : state.chapters
     }))
+    const rootPath = get().project?.rootPath
+    const relPath = get().activeRelPath
+    const storage = draftStorage()
+    if (rootPath && relPath && storage) writeDraft(storage, draftStorageKey(rootPath, relPath), markdown)
     if (autosaveTimer) clearTimeout(autosaveTimer)
     autosaveTimer = setTimeout(() => {
       void get().saveActiveChapter()
@@ -336,18 +376,31 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setEditorSelectionSnapshot(snapshot) {
-    set({ editorSelectionSnapshot: snapshot, editorSelection: snapshot?.text ?? '' })
+    set({ editorSelectionSnapshot: snapshot, editorSelection: snapshot?.text ?? '', editorSelectionActive: Boolean(snapshot), editorSelectionConfirmed: Boolean(snapshot) })
+  },
+
+  setEditorSelectionActive(active) {
+    set({ editorSelectionActive: active })
+  },
+
+  setEditorSelectionConfirmed(confirmed) {
+    set({ editorSelectionConfirmed: confirmed })
   },
 
   setPendingSuggestion(suggestion) { set({ pendingSuggestion: suggestion }) },
   async acceptPendingSuggestion() {
     const suggestion = get().pendingSuggestion
     if (!suggestion) return false
-    const result = await window.novelAPI.aiEdit.accept(suggestion.id)
-    if (!result.ok) { set({ notice: unwrapError('应用建议失败', result) }); return false }
-    set({ pendingSuggestion: null })
-    await get().openChapter(result.data.relPath)
-    return true
+    try {
+      const result = await window.novelAPI.aiEdit.accept(suggestion.id)
+      if (!result.ok) { set({ notice: unwrapError(localizedStoreText('suggestionApplyFailed'), result) }); return false }
+      set({ pendingSuggestion: null })
+      await get().openChapter(result.data.relPath)
+      return true
+    } catch (error) {
+      set({ notice: `${localizedStoreText('suggestionApplyFailed')}: ${error instanceof Error ? error.message : String(error)}` })
+      return false
+    }
   },
 
   async saveActiveChapter() {
@@ -364,30 +417,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     const snapshotVersion = editVersion
     set({ saveStatus: 'saving' })
     const operation = (async () => {
-      const r = await window.novelAPI.chapter.save(snapshotPath, snapshotMarkdown)
-      const current = get()
-      const isCurrentEdit = current.activeRelPath === snapshotPath && editVersion === snapshotVersion
-      if (!r.ok) {
-        set({
-          saveStatus: isCurrentEdit ? 'error' : 'dirty',
-          notice: unwrapError('保存失败', r)
-        })
-        return
+      try {
+        const r = await window.novelAPI.chapter.save(snapshotPath, snapshotMarkdown)
+        const current = get()
+        const isCurrentEdit = current.activeRelPath === snapshotPath && editVersion === snapshotVersion
+        if (!r.ok) {
+          set({
+            saveStatus: isCurrentEdit ? 'error' : 'dirty',
+            notice: unwrapError(localizedStoreText('saveFailed'), r)
+          })
+          return
+        }
+        if (isCurrentEdit) {
+          const rootPath = current.project?.rootPath
+          const storage = draftStorage()
+          if (rootPath && storage) clearDraft(storage, draftStorageKey(rootPath, snapshotPath))
+          set((state) => ({
+            saveStatus: 'saved',
+            activeChapter: state.activeChapter
+              ? { ...state.activeChapter, wordCount: r.data.wordCount, updatedAt: r.data.savedAt }
+              : state.activeChapter
+          }))
+        } else if (current.activeRelPath === snapshotPath) {
+          set({ saveStatus: 'dirty' })
+        }
+        // Refresh the sidebar in the background. Chapter navigation only needs
+        // the file save to finish; waiting for a full index refresh makes a
+        // click in the editor feel unresponsive on larger projects.
+        void get().loadChapters()
+      } catch (error) {
+        const current = get()
+        const isCurrentEdit = current.activeRelPath === snapshotPath && editVersion === snapshotVersion
+        set({ saveStatus: isCurrentEdit ? 'error' : 'dirty', notice: `${localizedStoreText('saveFailed')}: ${error instanceof Error ? error.message : String(error)}` })
       }
-      if (isCurrentEdit) {
-        set((state) => ({
-          saveStatus: 'saved',
-          activeChapter: state.activeChapter
-            ? { ...state.activeChapter, wordCount: r.data.wordCount, updatedAt: r.data.savedAt }
-            : state.activeChapter
-        }))
-      } else if (current.activeRelPath === snapshotPath) {
-        set({ saveStatus: 'dirty' })
-      }
-      // Refresh the sidebar in the background. Chapter navigation only needs
-      // the file save to finish; waiting for a full index refresh makes a
-      // click in the editor feel unresponsive on larger projects.
-      void get().loadChapters()
     })()
     const tracked = operation.finally(() => {
       if (savePromise === tracked) savePromise = null
@@ -405,36 +467,40 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async deleteChapter(relPath) {
-    const result = await window.novelAPI.chapter.remove(relPath)
-    if (!result.ok) {
-      set({ notice: `删除章节失败：${result.error.message}` })
-      return
+    try {
+      const result = await window.novelAPI.chapter.remove(relPath)
+      if (!result.ok) {
+        set({ notice: `${localizedStoreText('chapterDeleteFailed')}: ${result.error.message}` })
+        return
+      }
+      if (get().activeRelPath === relPath) {
+        set({
+          activeChapter: null,
+          activeRelPath: null,
+          editorMarkdown: '',
+          saveStatus: 'saved',
+          liveWordCount: 0,
+          scenes: [],
+          selectedSceneId: null,
+          sceneMessage: null
+        })
+      }
+      await get().loadChapters()
+      set({ notice: localizedStoreText('chapterDeleted') })
+    } catch (error) {
+      set({ notice: `${localizedStoreText('chapterDeleteFailed')}: ${error instanceof Error ? error.message : String(error)}` })
     }
-    if (get().activeRelPath === relPath) {
-      set({
-        activeChapter: null,
-        activeRelPath: null,
-        editorMarkdown: '',
-        saveStatus: 'saved',
-        liveWordCount: 0,
-        scenes: [],
-        selectedSceneId: null,
-        sceneMessage: null
-      })
-    }
-    await get().loadChapters()
-    set({ notice: '章节已删除，Timeline 引用已解除，Revision 已保留' })
   },
 
   async loadScenes(relPath = get().activeRelPath, requestVersion?: number) {
-    if (!relPath) { set({ scenes: [], selectedSceneId: null }); return }
+    if (!relPath) { set({ scenes: [], selectedSceneId: null, sceneMessage: null }); return }
     try {
       const result = await window.novelAPI.scene.list(relPath)
-      if (!result.ok) { set({ sceneMessage: `读取场景失败：${result.error.message}` }); return }
+      if (!result.ok) { set({ sceneMessage: `${localizedStoreText('sceneLoadFailed')}：${result.error.message}` }); return }
       if (requestVersion !== undefined && requestVersion !== chapterOpenVersion) return
       const selected = get().selectedSceneId
       set({ scenes: result.data, selectedSceneId: selected && result.data.some((scene) => scene.id === selected) ? selected : null, sceneMessage: null })
-    } catch (error) { set({ sceneMessage: `读取场景失败：${error instanceof Error ? error.message : String(error)}` }) }
+    } catch (error) { set({ sceneMessage: `${localizedStoreText('sceneLoadFailed')}: ${error instanceof Error ? error.message : String(error)}` }) }
   },
 
   selectScene(sceneId) { set({ selectedSceneId: sceneId }) },
@@ -445,10 +511,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sceneBusy: true, sceneMessage: null })
     try {
       const result = await window.novelAPI.scene.create({ ...input, chapterRelPath })
-      if (!result.ok) { set({ sceneMessage: `创建场景失败：${result.error.message}` }); return false }
-      set((state) => ({ scenes: [...state.scenes, result.data].sort((a, b) => a.order - b.order), selectedSceneId: result.data.id, sceneMessage: '场景已创建' }))
+      if (!result.ok) { set({ sceneMessage: `${localizedStoreText('sceneCreateFailed')}：${result.error.message}` }); return false }
+      set((state) => ({ scenes: [...state.scenes, result.data].sort((a, b) => a.order - b.order), selectedSceneId: result.data.id, sceneMessage: localizedStoreText('sceneCreated') }))
       return true
-    } catch (error) { set({ sceneMessage: `创建场景失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+    } catch (error) { set({ sceneMessage: `${localizedStoreText('sceneCreateFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
     finally { set({ sceneBusy: false }) }
   },
 
@@ -458,10 +524,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sceneBusy: true, sceneMessage: null })
     try {
       const result = await window.novelAPI.scene.update({ ...input, chapterRelPath })
-      if (!result.ok) { set({ sceneMessage: `保存场景失败：${result.error.message}` }); return false }
-      set((state) => ({ scenes: state.scenes.map((scene) => scene.id === result.data.id ? result.data : scene).sort((a, b) => a.order - b.order), sceneMessage: '场景已保存' }))
+      if (!result.ok) { set({ sceneMessage: `${localizedStoreText('sceneSaveFailed')}：${result.error.message}` }); return false }
+      set((state) => ({ scenes: state.scenes.map((scene) => scene.id === result.data.id ? result.data : scene).sort((a, b) => a.order - b.order), sceneMessage: localizedStoreText('sceneSaved') }))
       return true
-    } catch (error) { set({ sceneMessage: `保存场景失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+    } catch (error) { set({ sceneMessage: `${localizedStoreText('sceneSaveFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
     finally { set({ sceneBusy: false }) }
   },
 
@@ -471,10 +537,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sceneBusy: true, sceneMessage: null })
     try {
       const result = await window.novelAPI.scene.remove(chapterRelPath, sceneId)
-      if (!result.ok) { set({ sceneMessage: `删除场景失败：${result.error.message}` }); return false }
-      set((state) => ({ scenes: state.scenes.filter((scene) => scene.id !== sceneId).map((scene, order) => ({ ...scene, order })), selectedSceneId: state.selectedSceneId === sceneId ? null : state.selectedSceneId, sceneMessage: '场景已删除，正文未改变' }))
+      if (!result.ok) { set({ sceneMessage: `${localizedStoreText('sceneDeleteFailed')}：${result.error.message}` }); return false }
+      set((state) => ({ scenes: state.scenes.filter((scene) => scene.id !== sceneId).map((scene, order) => ({ ...scene, order })), selectedSceneId: state.selectedSceneId === sceneId ? null : state.selectedSceneId, sceneMessage: localizedStoreText('sceneDeleted') }))
       return true
-    } catch (error) { set({ sceneMessage: `删除场景失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+    } catch (error) { set({ sceneMessage: `${localizedStoreText('sceneDeleteFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
     finally { set({ sceneBusy: false }) }
   },
 
@@ -484,65 +550,65 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sceneBusy: true, sceneMessage: null })
     try {
       const result = await window.novelAPI.scene.reorder(chapterRelPath, sceneIds)
-      if (!result.ok) { set({ sceneMessage: `排序场景失败：${result.error.message}` }); return false }
-      set({ scenes: result.data, sceneMessage: '场景顺序已保存' })
+      if (!result.ok) { set({ sceneMessage: `${localizedStoreText('sceneOrderFailed')}：${result.error.message}` }); return false }
+      set({ scenes: result.data, sceneMessage: localizedStoreText('sceneOrderSaved') })
       return true
-    } catch (error) { set({ sceneMessage: `排序场景失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+    } catch (error) { set({ sceneMessage: `${localizedStoreText('sceneOrderFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
     finally { set({ sceneBusy: false }) }
   },
 
   async createVolume(input) {
     try {
       const result = await window.novelAPI.volume.create(input)
-      if (!result.ok) { set({ notice: `创建卷失败：${result.error.message}` }); return false }
-      set((state) => ({ volumes: [...state.volumes, result.data].sort((a, b) => a.order - b.order), notice: `已创建卷：${result.data.title}` }))
+       if (!result.ok) { set({ notice: `${localizedStoreText('volumeCreateFailed')}：${result.error.message}` }); return false }
+       set((state) => ({ volumes: [...state.volumes, result.data].sort((a, b) => a.order - b.order), notice: localizedStoreText('volumeCreated', { title: result.data.title }) }))
       return true
-    } catch (error) { set({ notice: `创建卷失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+     } catch (error) { set({ notice: `${localizedStoreText('volumeCreateFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   async updateVolume(input) {
     try {
       const result = await window.novelAPI.volume.update(input)
-      if (!result.ok) { set({ notice: `保存卷失败：${result.error.message}` }); return false }
-      set((state) => ({ volumes: state.volumes.map((volume) => volume.id === result.data.id ? result.data : volume), notice: '卷信息已保存' }))
+       if (!result.ok) { set({ notice: `${localizedStoreText('volumeSaveFailed')}：${result.error.message}` }); return false }
+       set((state) => ({ volumes: state.volumes.map((volume) => volume.id === result.data.id ? result.data : volume), notice: localizedStoreText('volumeSaved') }))
       return true
-    } catch (error) { set({ notice: `保存卷失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+     } catch (error) { set({ notice: `${localizedStoreText('volumeSaveFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   async deleteVolume(id) {
     try {
       const result = await window.novelAPI.volume.remove(id)
-      if (!result.ok) { set({ notice: `删除卷失败：${result.error.message}` }); return false }
-      set((state) => ({ volumes: state.volumes.filter((volume) => volume.id !== id), notice: '卷已删除' }))
+       if (!result.ok) { set({ notice: `${localizedStoreText('volumeDeleteFailed')}：${result.error.message}` }); return false }
+       set((state) => ({ volumes: state.volumes.filter((volume) => volume.id !== id), notice: localizedStoreText('volumeDeleted') }))
       return true
-    } catch (error) { set({ notice: `删除卷失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+     } catch (error) { set({ notice: `${localizedStoreText('volumeDeleteFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   async assignChapterToVolume(volumeId, chapterRelPath) {
     try {
       const result = await window.novelAPI.volume.assignChapter(volumeId, chapterRelPath)
-      if (!result.ok) { set({ notice: `归入卷失败：${result.error.message}` }); return false }
-      set({ volumes: result.data, notice: '章节已归入卷' })
+       if (!result.ok) { set({ notice: `${localizedStoreText('volumeAssignFailed')}：${result.error.message}` }); return false }
+       set({ volumes: result.data, notice: localizedStoreText('volumeAssigned') })
       return true
-    } catch (error) { set({ notice: `归入卷失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+     } catch (error) { set({ notice: `${localizedStoreText('volumeAssignFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   async unassignChapterFromVolume(chapterRelPath) {
     try {
       const result = await window.novelAPI.volume.unassignChapter(chapterRelPath)
-      if (!result.ok) { set({ notice: `移出卷失败：${result.error.message}` }); return false }
-      set({ volumes: result.data, notice: '章节已移出卷' })
+       if (!result.ok) { set({ notice: `${localizedStoreText('volumeUnassignFailed')}：${result.error.message}` }); return false }
+       set({ volumes: result.data, notice: localizedStoreText('volumeUnassigned') })
       return true
-    } catch (error) { set({ notice: `移出卷失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+     } catch (error) { set({ notice: `${localizedStoreText('volumeUnassignFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   async reorderVolumes(volumeIds) {
     try {
       const result = await window.novelAPI.volume.reorder(volumeIds)
-      if (!result.ok) { set({ notice: `卷排序失败：${result.error.message}` }); return false }
-      set({ volumes: result.data, notice: '卷顺序已保存' })
+       if (!result.ok) { set({ notice: `${localizedStoreText('volumeOrderFailed')}：${result.error.message}` }); return false }
+       set({ volumes: result.data, notice: localizedStoreText('volumeOrderSaved') })
       return true
-    } catch (error) { set({ notice: `卷排序失败：${error instanceof Error ? error.message : String(error)}` }); return false }
+     } catch (error) { set({ notice: `${localizedStoreText('volumeOrderFailed')}: ${error instanceof Error ? error.message : String(error)}` }); return false }
   },
 
   setNotice(notice) {

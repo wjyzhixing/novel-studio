@@ -2,6 +2,13 @@ import { factInputSchema, type FactInput } from '../../../shared/canon'
 
 export type ChatMessageKind = 'explanation' | 'analysis' | 'review' | 'draft' | 'canon-proposal' | 'image-proposal' | 'workflow'
 export type ChatDraftTarget = 'selection' | 'chapter' | 'missing-selection'
+export type ChatActionId = 'copy' | 'quote' | 'follow-up' | 'continue' | 'regenerate' | 'save-note' | 'preview-diff' | 'apply-selection' | 'append-chapter' | 'replace-chapter' | 'reject' | 'submit-canon' | 'open-canon-review' | 'open-illustration' | 'open-workflow' | 'retry-workflow'
+
+const CHAT_ACTION_IDS: Record<string, ChatActionId> = {
+  '复制': 'copy', '引用': 'quote', '追问': 'follow-up', '继续生成': 'continue', '重新生成': 'regenerate', '保存为 Note': 'save-note',
+  '预览 Diff': 'preview-diff', '应用到选区': 'apply-selection', '追加到章节': 'append-chapter', '替换章节': 'replace-chapter', '拒绝': 'reject',
+  '提交 Canon 提案': 'submit-canon', '打开 Canon Review': 'open-canon-review', '打开插图工作室': 'open-illustration', '打开 Workflow 详情': 'open-workflow', '重试失败节点': 'retry-workflow'
+}
 
 export function classifyChatPrompt(prompt: string): ChatMessageKind {
   if (/插图|图片|image/i.test(prompt)) return 'image-proposal'
@@ -14,9 +21,8 @@ export function classifyChatPrompt(prompt: string): ChatMessageKind {
 }
 
 export function chatDraftTarget(action: string, selection: string | null | undefined): ChatDraftTarget {
-  if (action === '追加到章节') return 'chapter'
-  if (action === '替换章节') return 'chapter'
-  if (action === '应用到选区') return selection?.trim() ? 'selection' : 'missing-selection'
+  if (action === 'append-chapter' || action === 'replace-chapter' || action === '追加到章节' || action === '替换章节') return 'chapter'
+  if (action === 'apply-selection' || action === '应用到选区') return selection?.trim() ? 'selection' : 'missing-selection'
   return selection?.trim() ? 'selection' : 'chapter'
 }
 
@@ -35,6 +41,13 @@ export function chatMessageActions(kind: ChatMessageKind): string[] {
   return ['复制', '打开 Workflow 详情', '重试失败节点']
 }
 
+export function chatMessageActionIds(kind: ChatMessageKind): ChatActionId[] {
+  return chatMessageActions(kind).flatMap((label) => {
+    const id = CHAT_ACTION_IDS[label]
+    return id ? [id] : []
+  })
+}
+
 /**
  * Chat text is untrusted. Only an explicit JSON object can cross the Canon
  * proposal boundary; prose, Markdown lists and reviewer instructions remain
@@ -48,6 +61,7 @@ export function parseStructuredCanonProposal(content: string, sourceDocumentId: 
   try {
     const parsed = JSON.parse(candidate) as Record<string, unknown>
     const result = factInputSchema.safeParse({
+      id: parsed.id,
       subjectId: parsed.subjectId,
       predicate: parsed.predicate,
       object: parsed.object,

@@ -14,8 +14,12 @@ export class VolumeService {
 
   async list(): Promise<Volume[]> {
     try {
-      const parsed = volumeFileSchema.safeParse(parseYaml(await readFile(resolveInsideRoot(this.root(), VOLUME_FILE), 'utf8')))
+      const filePath = resolveInsideRoot(this.root(), VOLUME_FILE)
+      const raw = parseYaml(await readFile(filePath, 'utf8')) as unknown
+      const normalized = normalizeVolumeFile(raw)
+      const parsed = volumeFileSchema.safeParse(normalized)
       if (!parsed.success) throw new DomainError('INVALID_PROJECT', 'story/volumes.yaml 格式无效')
+      if (normalized !== raw) await atomicWriteFile(filePath, stringifyYaml(parsed.data))
       return parsed.data.volumes.map((volume) => volumeSchema.parse(volume)).sort((a, b) => a.order - b.order)
     } catch (error) {
       if (error instanceof DomainError) throw error
@@ -108,4 +112,26 @@ export class VolumeService {
     if (!root) throw new DomainError('PROJECT_NOT_FOUND', '请先打开项目')
     return root
   }
+}
+
+export function normalizeVolumeFile(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const record = value as Record<string, unknown>
+  if (!Array.isArray(record.volumes)) return value
+  const now = new Date().toISOString()
+  const volumes = record.volumes.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item
+    const entry = item as Record<string, unknown>
+    const chapterRelPaths = Array.isArray(entry.chapterRelPaths) ? entry.chapterRelPaths : entry.chapters
+    return {
+      ...entry,
+      ...(!Object.prototype.hasOwnProperty.call(entry, 'id') ? { id: `volume_legacy_${index}` } : {}),
+      ...(!Object.prototype.hasOwnProperty.call(entry, 'title') ? { title: `第${index + 1}卷` } : {}),
+      ...(!Object.prototype.hasOwnProperty.call(entry, 'order') ? { order: index } : {}),
+      ...(Array.isArray(chapterRelPaths) && !Object.prototype.hasOwnProperty.call(entry, 'chapterRelPaths') ? { chapterRelPaths } : {}),
+      ...(!Object.prototype.hasOwnProperty.call(entry, 'createdAt') ? { createdAt: now } : {}),
+      ...(!Object.prototype.hasOwnProperty.call(entry, 'updatedAt') ? { updatedAt: now } : {})
+    }
+  })
+  return { ...record, version: Object.prototype.hasOwnProperty.call(record, 'version') ? record.version : 1, volumes }
 }

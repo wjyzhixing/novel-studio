@@ -16,6 +16,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "../styles/graph.css";
 import {
+  Bot,
   LayoutGrid,
   Loader2,
   Plus,
@@ -30,12 +31,28 @@ import type {
   StoryRelation,
 } from "../../../shared/story";
 import { formatGraphLayout } from "../utils/flow-layout";
+import { useGlobalMessage } from "../lib/global-notification";
+import { filterGraphNeighborhood } from "../lib/graph-neighborhood";
+import { getAdjacentRelations } from "../lib/graph-inspector";
+import { getUiText, useUiLocale, useUiText } from "../lib/i18n";
 
-type GraphNodeData = { label: string; kind: string };
+type GraphNodeData = { label: string; kind: string; entityId: string; onActivate?: (entityId: string) => void };
 
 function GraphBlock({ data, selected }: NodeProps<Node<GraphNodeData>>) {
   return (
-    <div className={`graph-block${selected ? " selected" : ""}`}>
+    <div
+      className={`graph-block${selected ? " selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`${data.label} · ${data.kind}`}
+      onClick={() => data.onActivate?.(data.entityId)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.currentTarget.click();
+        }
+      }}
+    >
       <Handle type="target" position={Position.Left} />
       <strong>{data.label}</strong>
       <small>{data.kind}</small>
@@ -46,14 +63,8 @@ function GraphBlock({ data, selected }: NodeProps<Node<GraphNodeData>>) {
 
 const graphNodeTypes = { graph: GraphBlock };
 
-const kindLabels: Record<string, string> = {
-  character: "人物",
-  place: "地点",
-  org: "组织",
-  item: "物品",
-};
-
-function graphNodes(entities: StoryEntity[]): Node<GraphNodeData>[] {
+function graphNodes(entities: StoryEntity[], locale: Parameters<typeof getUiText>[0], onActivate: (entityId: string) => void): Node<GraphNodeData>[] {
+  const kindLabels: Record<string, string> = { character: getUiText(locale, "graphEntityCharacter"), place: getUiText(locale, "graphEntityPlace"), org: getUiText(locale, "graphEntityOrg"), item: getUiText(locale, "graphEntityItem") };
   return entities.map((entity, index) => ({
     id: entity.id,
     type: "graph",
@@ -61,7 +72,7 @@ function graphNodes(entities: StoryEntity[]): Node<GraphNodeData>[] {
       x: (index % 4) * 220 + 40,
       y: Math.floor(index / 4) * 140 + 40,
     },
-    data: { label: entity.name, kind: kindLabels[entity.kind] ?? entity.kind },
+    data: { label: entity.name, kind: kindLabels[entity.kind] ?? entity.kind, entityId: entity.id, onActivate },
   }));
 }
 
@@ -84,7 +95,11 @@ function graphEdges(
     }));
 }
 
-export function GraphStudio() {
+export function GraphStudio({ focusRelationId = null }: { focusRelationId?: string | null }) {
+  const [locale] = useUiLocale();
+  const uiText = useUiText();
+  const formatUiText = (key: Parameters<typeof uiText>[0], values: Record<string, string | number>): string => Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), uiText(key));
+  const kindLabel = (kind: string) => ({ character: "graphEntityCharacter", place: "graphEntityPlace", org: "graphEntityOrg", item: "graphEntityItem" } as Record<string, Parameters<typeof uiText>[0]>)[kind] ? uiText(({ character: "graphEntityCharacter", place: "graphEntityPlace", org: "graphEntityOrg", item: "graphEntityItem" } as Record<string, Parameters<typeof uiText>[0]>)[kind]) : kind;
   const [entities, setEntities] = useState<StoryEntity[]>([]);
   const [relations, setRelations] = useState<StoryRelation[]>([]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<GraphNodeData>>(
@@ -102,13 +117,25 @@ export function GraphStudio() {
   const [kindFilter, setKindFilter] = useState<"all" | EntityKind>("all");
   const [entityQuery, setEntityQuery] = useState("");
   const [relationQuery, setRelationQuery] = useState("");
+  const [focusEntityId, setFocusEntityId] = useState<string | null>(null);
+  const [neighborhoodHops, setNeighborhoodHops] = useState(1);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState("");
+  const [notice, setNotice] = useGlobalMessage();
   const [propertiesWidth, setPropertiesWidth] = useState(320);
   const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
   const flowRef = useRef<ReactFlowInstance<Node<GraphNodeData>, Edge> | null>(
     null,
   );
+  const entitiesRef = useRef<StoryEntity[]>([]);
+  const selectEntity = useCallback((entity: StoryEntity) => {
+    setSelectedEntity(entity);
+    setSelectedRelation(null);
+    requestAnimationFrame(() => flowRef.current?.fitView({ nodes: [{ id: entity.id }], padding: 0.3, duration: 240 }));
+  }, []);
+  const activateEntity = useCallback((entityId: string) => {
+    const entity = entitiesRef.current.find((item) => item.id === entityId);
+    if (entity) selectEntity(entity);
+  }, [selectEntity]);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -118,23 +145,24 @@ export function GraphStudio() {
         window.novelAPI.story.listRelations(),
       ]);
       if (!entityResult.ok)
-        setNotice(`实体加载失败：${entityResult.error.message}`);
+        setNotice(formatUiText("graphEntityLoadFailed", { error: entityResult.error.message }));
       if (!relationResult.ok)
-        setNotice(`关系加载失败：${relationResult.error.message}`);
-      const nextEntities = entityResult.ok ? entityResult.data : [];
-      const nextRelations = relationResult.ok ? relationResult.data : [];
-      setEntities(nextEntities);
+        setNotice(formatUiText("graphRelationLoadFailed", { error: relationResult.error.message }));
+       const nextEntities = entityResult.ok ? entityResult.data : [];
+       const nextRelations = relationResult.ok ? relationResult.data : [];
+       entitiesRef.current = nextEntities;
+       setEntities(nextEntities);
       setRelations(nextRelations);
-      setNodes(graphNodes(nextEntities));
+       setNodes(graphNodes(nextEntities, locale, activateEntity));
       setEdges(graphEdges(nextRelations, nextEntities));
     } catch (error: unknown) {
       setNotice(
-        `图谱加载失败：${error instanceof Error ? error.message : String(error)}`,
+        formatUiText("graphLoadFailed", { error: error instanceof Error ? error.message : String(error) }),
       );
     } finally {
       setLoading(false);
     }
-  }, [setEdges, setNodes]);
+  }, [activateEntity, setEdges, setNodes, locale]);
 
   useEffect(() => {
     void reload();
@@ -144,11 +172,11 @@ export function GraphStudio() {
     () =>
       entities.map((entity) => ({
         id: entity.id,
-        label: `${entity.name} · ${kindLabels[entity.kind] ?? entity.kind}`,
+        label: `${entity.name} · ${kindLabel(entity.kind)}`,
       })),
-    [entities],
+    [entities, locale],
   );
-  const visibleEntities = useMemo(() => {
+  const filteredEntities = useMemo(() => {
     const query = entityQuery.trim().toLowerCase();
     return entities.filter(
       (entity) =>
@@ -160,16 +188,21 @@ export function GraphStudio() {
             .includes(query)),
     );
   }, [entities, kindFilter, entityQuery]);
+  const focusedGraph = useMemo(() => filterGraphNeighborhood(
+    filteredEntities,
+    relations.filter((relation) => !relationQuery.trim() || relation.relationType.toLowerCase().includes(relationQuery.trim().toLowerCase())),
+    focusEntityId,
+    neighborhoodHops,
+  ), [filteredEntities, focusEntityId, relationQuery, relations]);
+  const visibleEntities = focusedGraph.entities;
   const visibleRelations = useMemo(() => {
     const query = relationQuery.trim().toLowerCase();
-    return graphEdges(
-      relations.filter(
-        (relation) =>
-          !query || relation.relationType.toLowerCase().includes(query),
-      ),
-      visibleEntities,
-    );
-  }, [relations, relationQuery, visibleEntities]);
+    return graphEdges(focusedGraph.relations.filter((relation) => !query || relation.relationType.toLowerCase().includes(query)), visibleEntities);
+  }, [focusedGraph.relations, relationQuery, visibleEntities]);
+  const graphAdjacentRelations = useMemo(
+    () => getAdjacentRelations(entities, relations, selectedEntity?.id ?? null),
+    [entities, relations, selectedEntity],
+  );
   const selectedRelationData = useMemo(
     () =>
       relations.find((relation) => relation.id === selectedRelation) ?? null,
@@ -214,7 +247,7 @@ export function GraphStudio() {
     requestAnimationFrame(() =>
       flowRef.current?.fitView({ padding: 0.18, duration: 240 }),
     );
-    setNotice("图谱布局已整理");
+    setNotice(uiText("graphLayoutArranged"));
   };
 
   useEffect(() => {
@@ -239,8 +272,12 @@ export function GraphStudio() {
     setToId(relation.toId);
     setRelationType(relation.relationType);
     setMetadataText(JSON.stringify(relation.metadata, null, 2));
-    setNotice("已载入关系，可直接修改后保存");
+    setNotice(uiText("graphRelationLoaded"));
   };
+
+  useEffect(() => {
+    if (focusRelationId && relations.some((relation) => relation.id === focusRelationId)) selectRelation(focusRelationId)
+  }, [focusRelationId, relations])
 
   const save = async () => {
     if (!canSave) return;
@@ -249,11 +286,11 @@ export function GraphStudio() {
       try {
         const parsed: unknown = JSON.parse(metadataText);
         if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
-          throw new Error("必须是 JSON 对象");
+          throw new Error(uiText("graphMetadataObjectExpected"));
         metadata = parsed as Record<string, unknown>;
       } catch (error: unknown) {
         setNotice(
-          `关系元数据无效：${error instanceof Error ? error.message : String(error)}`,
+          formatUiText("graphMetadataInvalid", { error: error instanceof Error ? error.message : String(error) }),
         );
         return;
       }
@@ -265,10 +302,10 @@ export function GraphStudio() {
         metadata,
       });
       if (!result.ok) {
-        setNotice(`保存失败：${result.error.message}`);
+        setNotice(formatUiText("graphSaveFailed", { error: result.error.message }));
         return;
       }
-      setNotice("关系已保存");
+      setNotice(uiText("graphRelationSaved"));
       setSelectedRelation(null);
       setFromId("");
       setToId("");
@@ -277,7 +314,7 @@ export function GraphStudio() {
       await reload();
     } catch (error: unknown) {
       setNotice(
-        `保存关系失败：${error instanceof Error ? error.message : String(error)}`,
+        formatUiText("graphRelationSaveFailed", { error: error instanceof Error ? error.message : String(error) }),
       );
     }
   };
@@ -288,7 +325,7 @@ export function GraphStudio() {
       const result =
         await window.novelAPI.story.deleteRelation(selectedRelation);
       if (!result.ok) {
-        setNotice(`删除失败：${result.error.message}`);
+        setNotice(formatUiText("graphDeleteFailed", { error: result.error.message }));
         return;
       }
       setSelectedRelation(null);
@@ -296,14 +333,26 @@ export function GraphStudio() {
       setToId("");
       setRelationType("");
       setMetadataText("{}");
-      setNotice("关系已删除");
+      setNotice(uiText("graphRelationDeleted"));
       await reload();
     } catch (error: unknown) {
       setNotice(
-        `删除关系失败：${error instanceof Error ? error.message : String(error)}`,
+        formatUiText("graphRelationDeleteFailed", { error: error instanceof Error ? error.message : String(error) }),
       );
     }
-  };
+   };
+
+   const propose = async () => {
+     if (!selectedRelation || !canSave) return;
+     try {
+       const parsed: unknown = JSON.parse(metadataText);
+       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(uiText("graphMetadataObjectExpected"));
+       const result = await window.novelAPI.canon.proposeRelationUpdate({ id: selectedRelation, fromId, toId, relationType: relationType.trim(), metadata: parsed as Record<string, unknown> });
+       setNotice(result.ok ? uiText("graphRelationProposalSubmitted") : formatUiText("graphRelationProposalFailed", { error: result.error.message }));
+     } catch (error: unknown) {
+       setNotice(formatUiText("graphRelationProposalFailed", { error: error instanceof Error ? error.message : String(error) }));
+     }
+   };
 
   const onConnect = async (connection: Connection) => {
     if (
@@ -314,17 +363,16 @@ export function GraphStudio() {
       return;
     setFromId(connection.source);
     setToId(connection.target);
-    setNotice("已填入关系端点，请输入关系类型后保存");
+    setNotice(uiText("graphEndpointsFilled"));
   };
 
   return (
     <main className="graph-shell">
       <header className="graph-header">
         <div>
-          <b>Graph Studio</b>
+          <b>{uiText("graphStudio")}</b>
           <small>
-            Story Bible 实体关系图 · {visibleEntities.length}/{entities.length}{" "}
-            个实体 · {visibleRelations.length}/{relations.length} 条关系
+            {uiText("graphEntityRelationMap")} · {formatUiText("graphEntityCount", { count: visibleEntities.length })}/{entities.length} · {formatUiText("graphRelationCount", { count: visibleRelations.length })}/{relations.length}{focusEntityId ? ` · ${entities.find((entity) => entity.id === focusEntityId)?.name ?? focusEntityId}` : ""}
           </small>
         </div>
         <div className="graph-header-actions">
@@ -333,25 +381,25 @@ export function GraphStudio() {
               <Search size={13} aria-hidden="true" />
               <input
                 className="graph-search"
-                aria-label="搜索图谱实体"
+                aria-label={uiText("graphSearchEntities")}
                 value={entityQuery}
                 onChange={(event) => setEntityQuery(event.target.value)}
-                placeholder="搜索实体…"
+                placeholder={uiText("graphSearchEntities")}
               />
             </label>
             <label className="graph-search-field graph-relation-field">
-              <span className="graph-search-label">关系</span>
+              <span className="graph-search-label">{uiText("graphRelation")}</span>
               <input
                 className="graph-search"
-                aria-label="筛选关系类型"
+                aria-label={uiText("graphSearchRelations")}
                 value={relationQuery}
                 onChange={(event) => setRelationQuery(event.target.value)}
-                placeholder="关系类型…"
+                placeholder={uiText("graphSearchRelations")}
               />
             </label>
           </div>
           <div className="graph-filter-group">
-            <span>实体类型</span>
+             <span>{uiText("graphEntityType")}</span>
             <div className="graph-filters">
               {(["all", "character", "place", "org", "item"] as const).map(
                 (kind) => (
@@ -360,7 +408,7 @@ export function GraphStudio() {
                     className={kindFilter === kind ? "active" : ""}
                     onClick={() => setKindFilter(kind)}
                   >
-                    {kind === "all" ? "全部" : kindLabels[kind]}
+                    {kind === "all" ? uiText("graphAll") : kindLabel(kind)}
                   </button>
                 ),
               )}
@@ -370,16 +418,29 @@ export function GraphStudio() {
             className="graph-format"
             onClick={formatLayout}
             disabled={loading || nodes.length < 2}
-            title="自动整理节点布局"
+             title={uiText("graphArrangeLayout")}
           >
-            <LayoutGrid size={14} /> 整理布局
+             <LayoutGrid size={14} /> {uiText("graphArrangeLayout")}
           </button>
+          <label className="graph-depth-control">
+            <span>{uiText("graphNeighborhoodDepth")}</span>
+            <select
+              data-testid="graph-neighborhood-depth"
+              aria-label={uiText("graphNeighborhoodDepth")}
+              value={neighborhoodHops}
+              onChange={(event) => setNeighborhoodHops(Number(event.target.value))}
+            >
+              {[1, 2, 3].map((hops) => <option key={hops} value={hops}>{hops} {uiText("graphHops")}</option>)}
+            </select>
+          </label>
+           {selectedEntity && !focusEntityId && <button type="button" className="graph-focus-button" data-testid="graph-focus-neighborhood" onClick={() => { setEntityQuery(""); setKindFilter("all"); setFocusEntityId(selectedEntity.id); requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, duration: 240 })) }} title={uiText("graphFocusNeighborhood")}><Search size={14} /> {uiText("graphFocusNeighborhood")}</button>}
+           {focusEntityId && <button type="button" className="graph-focus-button active" data-testid="graph-clear-focus" onClick={() => { setFocusEntityId(null); requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.18, duration: 240 })) }} title={uiText("graphShowFullGraph")}><LayoutGrid size={14} /> {uiText("graphShowFullGraph")}</button>}
           <button
             className="graph-refresh"
             onClick={() => void reload()}
             disabled={loading}
           >
-            <RefreshCw size={14} /> 刷新
+             <RefreshCw size={14} /> {uiText("graphRefresh")}
           </button>
         </div>
       </header>
@@ -406,10 +467,8 @@ export function GraphStudio() {
             onEdgesChange={onEdgesChange}
             onConnect={(connection) => void onConnect(connection)}
             onNodeClick={(_, node) => {
-              setSelectedEntity(
-                entities.find((entity) => entity.id === node.id) ?? null,
-              );
-              setSelectedRelation(null);
+              const entity = entities.find((item) => item.id === node.id);
+              if (entity) selectEntity(entity);
             }}
             onEdgeClick={(_, edge) => selectRelation(edge.id)}
             fitView
@@ -420,33 +479,53 @@ export function GraphStudio() {
                 type="button"
                 className="react-flow__controls-button properties-toggle-control"
                 onClick={() => setPropertiesCollapsed((collapsed) => !collapsed)}
-                aria-label={propertiesCollapsed ? "展开 Properties" : "折叠 Properties"}
-                title={propertiesCollapsed ? "展开 Properties" : "折叠 Properties"}
+                 aria-label={propertiesCollapsed ? uiText("graphExpandProperties") : uiText("graphCollapseProperties")}
+                 title={propertiesCollapsed ? uiText("graphExpandProperties") : uiText("graphCollapseProperties")}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path d={propertiesCollapsed ? "M11 4.5V11.5" : "M5 4.5V11.5"} stroke="#86909C" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                  <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="#86909C" strokeWidth="1.2" />
-                </svg>
+                <Bot size={15} aria-hidden="true" />
               </button>
             </Controls>
           </ReactFlow>
         </div>
         <aside className={`graph-properties${propertiesCollapsed ? " is-collapsed" : ""}`}>
           <div className="graph-properties-heading">
-            <h3>{selectedRelation ? "编辑关系" : "新增关系"}</h3>
+             <h3>{selectedRelation ? uiText("graphEditRelation") : uiText("graphNewRelation")}</h3>
           </div>
+          {selectedEntity && <section className="graph-entity-inspector" data-testid="graph-entity-inspector" aria-label={uiText("graphInspectEntity")}>
+            <div className="graph-entity-inspector-heading"><strong>{selectedEntity.name}</strong><small>{kindLabel(selectedEntity.kind)}</small></div>
+            {selectedEntity.aliases.length > 0 && <p><b>{uiText("graphEntityAliases")}</b><span>{selectedEntity.aliases.join(" · ")}</span></p>}
+            {selectedEntity.notes.trim() && <p><b>{uiText("graphEntityNotes")}</b><span>{selectedEntity.notes}</span></p>}
+            <div className="graph-entity-neighbors"><b>{uiText("graphAdjacentRelations")}</b>{graphAdjacentRelations.length > 0 ? graphAdjacentRelations.map((item) => <button type="button" key={item.relationId} data-testid="graph-adjacent-relation" onClick={() => selectEntity(item.neighbor)} title={uiText("graphFocusNeighbor")}><span>{item.direction === "incoming" ? uiText("graphIncoming") : uiText("graphOutgoing")} · {item.relationType}</span><strong>{item.neighbor.name}</strong></button>) : <small>{uiText("graphNoAdjacentRelations")}</small>}</div>
+            {!focusEntityId && <button type="button" className="graph-focus-button" data-testid="graph-inspector-focus" onClick={() => { setEntityQuery(""); setKindFilter("all"); setFocusEntityId(selectedEntity.id); requestAnimationFrame(() => flowRef.current?.fitView({ padding: 0.2, duration: 240 })) }}><Search size={14} /> {uiText("graphFocusNeighbor")}</button>}
+          </section>}
+          {visibleRelations.length > 0 && (
+             <div className="graph-relation-list" aria-label={uiText("graphRelationList")}>
+              {visibleRelations.map((edge) => (
+                <button
+                  type="button"
+                  key={edge.id}
+                  data-testid="graph-relation-edge"
+                  data-relation-id={edge.id}
+                  className={selectedRelation === edge.id ? "active" : ""}
+                  onClick={() => selectRelation(edge.id)}
+                >
+                  {edge.label ?? edge.id}
+                </button>
+              ))}
+            </div>
+          )}
           {loading && (
             <p>
-              <Loader2 className="spin" size={14} /> 正在读取 Story Bible…
+               <Loader2 className="spin" size={14} /> {uiText("graphLoading")}
             </p>
           )}
           <label>
-            起点
+             {uiText("graphStart")}
             <select
               value={fromId}
               onChange={(event) => setFromId(event.target.value)}
             >
-              <option value="">选择实体</option>
+               <option value="">{uiText("graphSelectEntity")}</option>
               {entityOptions.map((entity) => (
                 <option key={entity.id} value={entity.id}>
                   {entity.label}
@@ -455,28 +534,30 @@ export function GraphStudio() {
             </select>
           </label>
           <label>
-            关系类型
+             {uiText("graphRelationType")}
             <input
+              data-testid="graph-relation-type"
               value={relationType}
               onChange={(event) => setRelationType(event.target.value)}
-              placeholder="例如：盟友、位于、持有"
+               placeholder="e.g. ally, located in, owns"
             />
           </label>
           <label>
-            关系元数据（JSON）
+             {uiText("graphRelationMetadata")}
             <textarea
+              data-testid="graph-relation-metadata"
               value={metadataText}
               onChange={(event) => setMetadataText(event.target.value)}
               placeholder='{"confidence": 0.8}'
             />
           </label>
           <label>
-            终点
+             {uiText("graphEnd")}
             <select
               value={toId}
               onChange={(event) => setToId(event.target.value)}
             >
-              <option value="">选择实体</option>
+               <option value="">{uiText("graphSelectEntity")}</option>
               {entityOptions.map((entity) => (
                 <option key={entity.id} value={entity.id}>
                   {entity.label}
@@ -487,12 +568,14 @@ export function GraphStudio() {
           <div className="graph-relation-actions">
             <button
               className="primary graph-save-button"
+              data-testid="graph-relation-save"
               disabled={!canSave}
               onClick={() => void save()}
             >
               {selectedRelation ? <Save size={14} /> : <Plus size={14} />}{" "}
-              {selectedRelation ? "更新关系" : "保存关系"}
+               {selectedRelation ? uiText("graphUpdateRelation") : uiText("graphSaveRelation")}
             </button>
+            {selectedRelation && <button type="button" data-testid="graph-relation-propose" onClick={() => void propose()} disabled={!canSave} title={uiText("graphProposeRelation")}>{uiText("graphProposeRelation")}</button>}
             {selectedRelation && (
               <button
                 className="graph-cancel-button"
@@ -502,36 +585,37 @@ export function GraphStudio() {
                   setToId("");
                   setRelationType("");
                   setMetadataText("{}");
-                  setNotice("已切换为新增关系");
+                   setNotice(uiText("graphSwitchToNew"));
                 }}
               >
-                取消编辑
+                 {uiText("graphCancelEdit")}
               </button>
             )}
             <button
               className="graph-delete-button"
+              data-testid="graph-relation-delete"
               disabled={!selectedRelation}
               onClick={() => void remove()}
             >
-              <Trash2 size={14} /> 删除选中关系
+               <Trash2 size={14} /> {uiText("graphDeleteRelation")}
             </button>
           </div>
           {selectedEntity && (
             <div className="graph-selection">
-              <h3>选中实体</h3>
+               <h3>{uiText("graphSelectedEntity")}</h3>
               <b>{selectedEntity.name}</b>
               <small>
-                {kindLabels[selectedEntity.kind] ?? selectedEntity.kind} ·{" "}
+                {kindLabel(selectedEntity.kind)} ·{" "}
                 {selectedEntity.id}
               </small>
               {selectedEntity.aliases.length > 0 && (
-                <small>别名：{selectedEntity.aliases.join("、")}</small>
+                 <small>{formatUiText("graphAliases", { aliases: selectedEntity.aliases.join("、") })}</small>
               )}
             </div>
           )}
           {selectedRelationData && (
             <div className="graph-selection">
-              <h3>选中关系</h3>
+               <h3>{uiText("graphSelectedRelation")}</h3>
               <b>
                 {entities.find(
                   (entity) => entity.id === selectedRelationData.fromId,
@@ -541,12 +625,12 @@ export function GraphStudio() {
                   (entity) => entity.id === selectedRelationData.toId,
                 )?.name ?? selectedRelationData.toId}
               </b>
-              <small>类型：{selectedRelationData.relationType}</small>
-              <small>关系 ID：{selectedRelationData.id}</small>
+               <small>{uiText("graphRelationType")}：{selectedRelationData.relationType}</small>
+               <small>{formatUiText("graphRelationId", { id: selectedRelationData.id })}</small>
             </div>
           )}
           <p className="graph-hint">
-            也可以在画布上从一个节点拖到另一个节点，自动填入关系两端。
+             {uiText("graphCanvasHint")}
           </p>
           {notice && (
             <div className="workflow-message" role="status">

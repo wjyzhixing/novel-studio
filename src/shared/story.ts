@@ -80,6 +80,15 @@ export const storyArtifactInputSchema = z.object({
 }).superRefine((value, ctx) => validateArtifactFields(value.kind, value.fields, ctx))
 export type StoryArtifactInput = z.input<typeof storyArtifactInputSchema>
 export interface StoryArtifact { id: string; kind: StoryArtifactKind; title: string; fields: Record<string, unknown>; notes: string; updatedAt: string }
+export type StorySearchResultKind = 'entity' | 'timeline' | 'artifact' | 'relation' | 'document'
+export interface StorySearchResult {
+  id: string
+  title: string
+  kind: StorySearchResultKind
+  type: EntityKind | StoryArtifactKind | 'timeline' | 'relation' | 'document'
+  hint: string
+  relPath?: string
+}
 export interface ForeshadowingRecord {
   id: string
   title: string
@@ -106,6 +115,7 @@ export interface StoryApiContract {
   saveRelation(input: StoryRelationInput): Promise<Result<StoryRelation>>
   deleteRelation(id: string): Promise<Result<null>>
   search(query: string): Promise<Result<StoryEntity[]>>
+  searchAll(query: string): Promise<Result<StorySearchResult[]>>
   listArtifacts(kind?: StoryArtifactKind): Promise<Result<StoryArtifact[]>>
   saveArtifact(input: StoryArtifactInput): Promise<Result<StoryArtifact>>
   deleteArtifact(id: string): Promise<Result<null>>

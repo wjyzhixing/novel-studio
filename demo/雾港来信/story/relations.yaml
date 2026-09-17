@@ -1,0 +1,25 @@
+relations:
+  - id: rel_lin_lan_father
+    fromId: ent_lin_lan
+    relationType: daughter_of
+    toId: ent_lin_cheng
+    metadata:
+      status: unresolved
+      note: 父亲失踪是林岚调查的私人动机
+    createdAt: 2026-09-15T00:00:00.000Z
+  - id: rel_lin_lan_gu_shen
+    fromId: ent_lin_lan
+    relationType: reluctant_ally
+    toId: ent_gu_shen
+    metadata:
+      trust: low
+      note: 顾深知道旧港区的部分真相
+    createdAt: 2026-09-15T00:00:00.000Z
+  - id: rel_lin_lan_zhou_ye
+    fromId: ent_lin_lan
+    relationType: evidence_source
+    toId: ent_zhou_ye
+    metadata:
+      trust: guarded
+      note: 周野掌握事故后的民间记录
+    createdAt: 2026-09-15T00:00:00.000Z

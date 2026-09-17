@@ -15,16 +15,25 @@ import {
   type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import "../styles/workflow-editor-accessibility.css";
 import {
+  Bot,
+  Download,
   LayoutGrid,
   Loader2,
   Save,
   ShieldCheck,
+  Upload,
 } from "lucide-react";
 import type { Workflow } from "../../../shared/workflow";
 import { formatWorkflowLayout } from "../utils/flow-layout";
+import { useUiText, type UiTextKey } from "../lib/i18n";
+import { useGlobalMessage } from "../lib/global-notification";
+import { selectWorkflowSummary } from "../lib/workflow-selection";
+import { useAppStore } from "../store/app-store";
 
 type WorkflowNodeData = {
+  nodeId: string;
   label: string;
   workflowType: string;
   inputs: Workflow["nodes"][number]["inputs"];
@@ -34,79 +43,79 @@ type WorkflowNodeData = {
 
 const NODE_CATALOG: Array<{
   type: string;
-  label: string;
+  labelKey: UiTextKey;
   inputs: WorkflowNodeData["inputs"];
   outputs: WorkflowNodeData["outputs"];
 }> = [
   {
     type: "input.chapter",
-    label: "当前章节输入",
+    labelKey: "nodeInputChapter",
     inputs: [],
     outputs: [{ id: "out", type: "chapter", required: false }],
   },
   {
     type: "context.load",
-    label: "加载 Context",
+    labelKey: "nodeLoadContext",
     inputs: [{ id: "in", type: "chapter", required: true }],
     outputs: [{ id: "out", type: "context", required: false }],
   },
   {
     type: "ai.prompt",
-    label: "AI 写作",
+    labelKey: "nodeAiWriting",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "ai.critic",
-    label: "AI 审稿",
+    labelKey: "nodeAiReview",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "human.review",
-    label: "人工审核",
+    labelKey: "nodeHumanReview",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "chapter.write",
-    label: "写回当前章节",
+    labelKey: "nodeWriteChapter",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "chapter", required: false }],
   },
   {
     type: "memory.extract",
-    label: "提取设定",
+    labelKey: "nodeExtractSettings",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "image.propose",
-    label: "图片提案",
+    labelKey: "nodeImageProposal",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "image.generate",
-    label: "生成图片",
+    labelKey: "nodeGenerateImage",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "image.select",
-    label: "人工选图",
+    labelKey: "nodeSelectImage",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "image.insert",
-    label: "插入正文",
+    labelKey: "nodeInsertImage",
     inputs: [{ id: "in", type: "any", required: true }],
     outputs: [{ id: "out", type: "any", required: false }],
   },
   {
     type: "logic.merge",
-    label: "合并输入",
+    labelKey: "nodeMergeInput",
     inputs: [
       { id: "a", type: "any", required: true },
       { id: "b", type: "any", required: true },
@@ -116,8 +125,21 @@ const NODE_CATALOG: Array<{
 ];
 
 function WorkflowBlock({ data, selected }: NodeProps<Node<WorkflowNodeData>>) {
+  const activate = () => window.dispatchEvent(new CustomEvent("novel:workflow-node-activate", { detail: data.nodeId }));
+  const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    activate();
+  };
   return (
-    <div className={`workflow-block${selected ? " selected" : ""}`}>
+    <div
+      className={`workflow-block${selected ? " selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      aria-label={`${data.label} · ${data.workflowType}`}
+      onKeyDown={onKeyDown}
+    >
       {data.inputs.map((port, index) => (
         <Handle
           key={`in-${port.id}`}
@@ -154,6 +176,7 @@ function toReactFlow(workflow: Workflow): {
       type: "workflow",
       position: node.position,
       data: {
+        nodeId: node.id,
         label: node.label,
         workflowType: node.type,
         inputs: node.inputs,
@@ -253,6 +276,9 @@ const fallbackWorkflow: Workflow = {
 };
 
 export function WorkflowEditor() {
+  const uiText = useUiText();
+  const defaultWorkflow = useAppStore((state) => state.project?.manifest.defaultWorkflow);
+  const formatUiText = (key: Parameters<typeof uiText>[0], values: Record<string, string | number>): string => Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), uiText(key));
   const initial = toReactFlow(fallbackWorkflow);
   const [baseWorkflow, setBaseWorkflow] = useState<Workflow>(fallbackWorkflow);
   const [nodes, setNodes, onNodesChange] = useNodesState<
@@ -261,7 +287,7 @@ export function WorkflowEditor() {
   const [edges, setEdges, onEdgesChange] = useEdgesState(initial.edges);
   const [selected, setSelected] = useState<string | null>(null);
   const [name, setName] = useState(fallbackWorkflow.name);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useGlobalMessage();
   const [loading, setLoading] = useState(true);
   const [propertiesWidth, setPropertiesWidth] = useState(320);
   const [propertiesCollapsed, setPropertiesCollapsed] = useState(false);
@@ -275,8 +301,7 @@ export function WorkflowEditor() {
     void (async () => {
       const list = await window.novelAPI.workflowEditor.list();
       const summary = list.ok
-        ? (list.data.find((item) => item.id === "flow_builtin_novel") ??
-          list.data[0])
+        ? selectWorkflowSummary(list.data, defaultWorkflow)
         : undefined;
       if (!summary) {
         if (current) setLoading(false);
@@ -290,13 +315,13 @@ export function WorkflowEditor() {
         setName(result.data.name);
         setNodes(mapped.nodes);
         setEdges(mapped.edges);
-      } else setMessage(`加载失败：${result.error.message}`);
+      } else setMessage(formatUiText("workflowLoadingFailed", { error: result.error.message }));
       setLoading(false);
     })();
     return () => {
       current = false;
     };
-  }, [setEdges, setNodes]);
+  }, [defaultWorkflow, setEdges, setNodes]);
 
   const workflow = useMemo(
     () => toWorkflow(nodes, edges, baseWorkflow, name),
@@ -316,30 +341,80 @@ export function WorkflowEditor() {
     [setEdges],
   );
   const save = async () => {
-    setMessage("保存中…");
+    setMessage(uiText("workflowSaving"));
     const result = await window.novelAPI.workflowEditor.save(workflow);
     setMessage(
       result.ok
-        ? `Workflow 已保存：${result.data.relPath}`
-        : `保存失败：${result.error.message}`,
+        ? formatUiText("workflowSaved", { path: result.data.relPath })
+        : formatUiText("workflowSaveFailed", { error: result.error.message }),
     );
   };
   const validate = async () => {
     const result = await window.novelAPI.workflowEditor.validate(workflow);
     setMessage(
       result.ok && result.data.length === 0
-        ? "DAG 校验通过"
+        ? uiText("workflowValidationPassed")
         : result.ok
           ? result.data.map((issue) => issue.message).join("；")
-          : result.error.message,
+          : formatUiText("workflowValidationFailed", { error: result.error.message }),
     );
+  };
+  const importCommunityWorkflow = async () => {
+    const picked = await window.novelAPI.project.pickCommunityWorkflowOpen();
+    if (!picked.ok || !picked.data) {
+      if (!picked.ok) setMessage(formatUiText("communityPickFailed", { error: picked.error.message }));
+      return;
+    }
+    const preview = await window.novelAPI.communityWorkflow.preview(picked.data);
+    if (!preview.ok) {
+      setMessage(formatUiText("communityReadFailed", { error: preview.error.message }));
+      return;
+    }
+    const missing = preview.data.dependencies.filter((item) => !item.installed);
+    const dependencyText = preview.data.dependencies.length === 0
+      ? uiText("communityNoDependencies")
+      : missing.length === 0
+        ? uiText("communityDependenciesReady")
+        : formatUiText("communityMissingDependencies", { dependencies: missing.map((item) => item.id).join("、") });
+    if (missing.length > 0) {
+      setMessage(formatUiText("communityImportBlocked", { name: preview.data.name, dependencies: dependencyText }));
+      return;
+    }
+    const confirmed = window.confirm(formatUiText("communityImportConfirm", { name: preview.data.name, description: preview.data.description || uiText("communityNoDescription"), dependencies: dependencyText, permissions: preview.data.permissions.join("、") || uiText("communityNoExtraPermissions"), prompts: preview.data.promptNames.join("、") || uiText("communityNoPrompts") }));
+    if (!confirmed) return;
+    const installed = await window.novelAPI.communityWorkflow.install(picked.data, preview.data.permissions);
+    if (!installed.ok) {
+      setMessage(formatUiText("communityImportFailed", { error: installed.error.message }));
+      return;
+    }
+    const loaded = await window.novelAPI.workflowEditor.read(installed.data.relPath);
+    if (!loaded.ok) {
+      setMessage(formatUiText("communityImportLoadedFailed", { error: loaded.error.message }));
+      return;
+    }
+    const mapped = toReactFlow(loaded.data);
+    setBaseWorkflow(loaded.data);
+    setName(loaded.data.name);
+    setNodes(mapped.nodes);
+    setEdges(mapped.edges);
+    setSelected(null);
+    setMessage(formatUiText("communityImported", { path: installed.data.relPath }));
+  };
+  const exportCommunityWorkflow = async () => {
+    const picked = await window.novelAPI.project.pickCommunityWorkflowSave();
+    if (!picked.ok || !picked.data) {
+      if (!picked.ok) setMessage(formatUiText("communityExportPickFailed", { error: picked.error.message }));
+      return;
+    }
+    const result = await window.novelAPI.communityWorkflow.export(workflow, picked.data);
+    setMessage(result.ok ? formatUiText("communityExported", { path: picked.data }) : formatUiText("communityExportFailed", { error: result.error.message }));
   };
   const formatLayout = () => {
     setNodes((current) => formatWorkflowLayout(current, edges));
     requestAnimationFrame(() =>
       flowRef.current?.fitView({ padding: 0.18, duration: 240 }),
     );
-    setMessage("Workflow 布局已整理");
+    setMessage(uiText("workflowLayoutArranged"));
   };
   const rename = (label: string) => {
     if (!selected) return;
@@ -376,7 +451,8 @@ export function WorkflowEditor() {
         y: 80 + Math.floor(nodes.length / 4) * 150,
       },
       data: {
-        label: template.label,
+        nodeId: `${baseId}-${index}`,
+        label: uiText(template.labelKey),
         workflowType: template.type,
         inputs: template.inputs,
         outputs: template.outputs,
@@ -437,6 +513,15 @@ export function WorkflowEditor() {
   const selectedNode = nodes.find((node) => node.id === selected);
 
   useEffect(() => {
+    const onKeyboardNodeActivate = (event: Event) => {
+      const nodeId = (event as CustomEvent<unknown>).detail;
+      if (typeof nodeId === "string" && nodes.some((node) => node.id === nodeId)) setSelected(nodeId);
+    };
+    window.addEventListener("novel:workflow-node-activate", onKeyboardNodeActivate);
+    return () => window.removeEventListener("novel:workflow-node-activate", onKeyboardNodeActivate);
+  }, [nodes]);
+
+  useEffect(() => {
     const body = document.querySelector(".workflow-body") as HTMLElement | null;
     const panel = document.querySelector(
       ".workflow-properties",
@@ -474,13 +559,13 @@ export function WorkflowEditor() {
     <main className="workflow-shell">
       <header>
         <div>
-          <b>Workflow Editor</b>
+          <b>{uiText("workflowEditorTitle")}</b>
           <small>
-            {workflow.id} · {loading ? "加载中…" : "项目 Workflow"}
+            {workflow.id} · {loading ? uiText("loadingProjectWorkflow") : uiText("projectWorkflow")}
           </small>
         </div>
         <input
-          aria-label="Workflow name"
+          aria-label={uiText("workflowName")}
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
@@ -488,19 +573,25 @@ export function WorkflowEditor() {
           <button
             onClick={formatLayout}
             disabled={loading || nodes.length < 2}
-            title="自动整理流程布局"
+            title={uiText("arrangeLayoutTitle")}
           >
-            <LayoutGrid size={14} /> 整理布局
+            <LayoutGrid size={14} /> {uiText("arrangeLayout")}
           </button>
           <button onClick={() => void validate()} disabled={loading}>
-            <ShieldCheck size={14} /> Validate
+            <ShieldCheck size={14} /> {uiText("validate")}
+          </button>
+          <button onClick={() => void importCommunityWorkflow()} disabled={loading} title={uiText("communityWorkflowTitle")}>
+            <Upload size={14} /> {uiText("importCommunityWorkflow")}
+          </button>
+          <button onClick={() => void exportCommunityWorkflow()} disabled={loading} title={uiText("exportCommunityWorkflow")}>
+            <Download size={14} /> {uiText("exportCommunityWorkflow")}
           </button>
           <button
             className="primary"
             onClick={() => void save()}
             disabled={loading}
           >
-            <Save size={14} /> Save
+            <Save size={14} /> {uiText("save")}
           </button>
         </div>
       </header>
@@ -525,30 +616,27 @@ export function WorkflowEditor() {
                 type="button"
                 className="react-flow__controls-button properties-toggle-control"
                 onClick={() => setPropertiesCollapsed((collapsed) => !collapsed)}
-                aria-label={propertiesCollapsed ? "展开 Properties" : "折叠 Properties"}
-                title={propertiesCollapsed ? "展开 Properties" : "折叠 Properties"}
+                aria-label={propertiesCollapsed ? uiText("expandProperties") : uiText("collapseProperties")}
+                title={propertiesCollapsed ? uiText("expandProperties") : uiText("collapseProperties")}
               >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                  <path d={propertiesCollapsed ? "M11 4.5V11.5" : "M5 4.5V11.5"} stroke="#86909C" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                  <rect x="1" y="2" width="14" height="12" rx="1.5" stroke="#86909C" strokeWidth="1.2" />
-                </svg>
+                <Bot size={15} aria-hidden="true" />
               </button>
             </Controls>
           </ReactFlow>
         </div>
         <aside className={`workflow-properties${propertiesCollapsed ? " is-collapsed" : ""}`}>
           <div className="workflow-properties-heading">
-            <h3>Properties</h3>
+            <h3>{uiText("properties")}</h3>
           </div>
           {loading && (
             <p>
-              <Loader2 className="spin" size={14} /> 正在读取项目 Workflow…
+              <Loader2 className="spin" size={14} /> {uiText("loadingWorkflow")}
             </p>
           )}
           <section className="workflow-add-block">
-            <h4>添加流程块</h4>
+            <h4>{uiText("addBlock")}</h4>
             <select
-              aria-label="选择流程块"
+              aria-label={uiText("selectBlock")}
               defaultValue=""
               onChange={(event) => {
                 addBlock(event.target.value);
@@ -556,18 +644,18 @@ export function WorkflowEditor() {
               }}
               disabled={loading}
             >
-              <option value="">选择节点类型…</option>
+              <option value="">{uiText("selectNodeType")}</option>
               {NODE_CATALOG.map((item) => (
                 <option value={item.type} key={item.type}>
-                  {item.label} · {item.type}
+                  {uiText(item.labelKey)} · {item.type}
                 </option>
               ))}
             </select>
-            <small>块添加后，通过左右端口拖拽连线；运行顺序由连线决定。</small>
+            <small>{uiText("blockHint")}</small>
           </section>
           <section className="workflow-variables">
             <div className="workflow-section-heading">
-              <h4>Variables</h4>
+              <h4>{uiText("variables")}</h4>
               <button type="button" onClick={addVariable} disabled={loading}>
                 ＋
               </button>
@@ -575,14 +663,14 @@ export function WorkflowEditor() {
             {workflow.variables.map((variable) => (
               <div className="workflow-variable" key={variable.name}>
                 <input
-                  aria-label="Variable name"
+                  aria-label={uiText("variableName")}
                   value={variable.name}
                   onChange={(event) =>
                     updateVariable(variable.name, { name: event.target.value })
                   }
                 />
                 <select
-                  aria-label="Variable type"
+                  aria-label={uiText("variableType")}
                   value={variable.type}
                   onChange={(event) =>
                     updateVariable(variable.name, { type: event.target.value })
@@ -593,7 +681,7 @@ export function WorkflowEditor() {
                   <option value="boolean">boolean</option>
                 </select>
                 <input
-                  aria-label="Variable default"
+                  aria-label={uiText("variableDefault")}
                   value={
                     typeof variable.defaultValue === "string" ||
                     typeof variable.defaultValue === "number" ||
@@ -606,11 +694,11 @@ export function WorkflowEditor() {
                       defaultValue: event.target.value,
                     })
                   }
-                  placeholder="default"
+                  placeholder={uiText("defaultValue")}
                 />
                 <button
                   type="button"
-                  aria-label={`Remove ${variable.name}`}
+                  aria-label={formatUiText("removeVariable", { name: variable.name })}
                   onClick={() => removeVariable(variable.name)}
                 >
                   ×
@@ -619,39 +707,39 @@ export function WorkflowEditor() {
             ))}
             {workflow.variables.length === 0 && (
               <p className="workflow-help">
-                暂无变量；在节点配置中使用 {"{{name}}"} 引用。
+                {uiText("noVariables")}
               </p>
             )}
           </section>
           {selectedNode && (
             <>
               <label>
-                Label
+                {uiText("label")}
                 <input
                   value={String(selectedNode.data.label)}
                   onChange={(event) => rename(event.target.value)}
                 />
               </label>
               <p>
-                Node ID <code>{selectedNode.id}</code>
+                {uiText("nodeId")} <code>{selectedNode.id}</code>
               </p>
               <p>
-                Type <code>{selectedNode.data.workflowType}</code>
+                {uiText("type")} <code>{selectedNode.data.workflowType}</code>
               </p>
               <p>
-                Inputs{" "}
+                {uiText("inputs")}{" "}
                 <code>
                   {selectedNode.data.inputs
                     .map((port) => `${port.id}:${port.type}`)
-                    .join(", ") || "none"}
+                    .join(", ") || uiText("none")}
                 </code>
               </p>
               <p>
-                Outputs{" "}
+                {uiText("outputs")}{" "}
                 <code>
                   {selectedNode.data.outputs
                     .map((port) => `${port.id}:${port.type}`)
-                    .join(", ") || "none"}
+                    .join(", ") || uiText("none")}
                 </code>
               </p>
               <button
@@ -659,13 +747,13 @@ export function WorkflowEditor() {
                 className="workflow-delete-node"
                 onClick={deleteSelected}
               >
-                删除此流程块
+                {uiText("deleteBlock")}
               </button>
               {selectedNode.data.workflowType.startsWith("ai.") && (
                 <div className="workflow-agent-config">
-                  <h4>Agent Policy Overrides</h4>
+                  <h4>{uiText("agentPolicyOverrides")}</h4>
                   <label>
-                    Agent
+                    {uiText("agent")}
                     <input
                       value={String(selectedNode.data.config.agent ?? "writer")}
                       onChange={(event) =>
@@ -674,7 +762,7 @@ export function WorkflowEditor() {
                     />
                   </label>
                   <label>
-                    Temperature
+                    {uiText("temperature")}
                     <input
                       type="number"
                       min="0"
@@ -696,7 +784,7 @@ export function WorkflowEditor() {
                     />
                   </label>
                   <label>
-                    Max output tokens
+                    {uiText("maxOutputTokens")}
                     <input
                       type="number"
                       min="1"
@@ -719,7 +807,7 @@ export function WorkflowEditor() {
                     />
                   </label>
                   <label>
-                    Retry count
+                    {uiText("retryCount")}
                     <input
                       type="number"
                       min="0"
@@ -741,7 +829,7 @@ export function WorkflowEditor() {
                     />
                   </label>
                   <label>
-                    Context recipe
+                    {uiText("contextRecipe")}
                     <input
                       value={String(
                         selectedNode.data.config.contextRecipe ?? "",
@@ -752,14 +840,14 @@ export function WorkflowEditor() {
                           event.target.value || undefined,
                         )
                       }
-                      placeholder="默认使用 Agent policy"
+                      placeholder={uiText("defaultAgentPolicy")}
                     />
                   </label>
                 </div>
               )}
             </>
           )}
-          {!loading && !selectedNode && <p>选择节点编辑属性</p>}
+          {!loading && !selectedNode && <p>{uiText("selectNodeToEdit")}</p>}
           {message && (
             <div className="workflow-message" role="status">
               {message}

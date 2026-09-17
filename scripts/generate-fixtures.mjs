@@ -62,6 +62,15 @@ async function migrationV1() {
   db.close()
 }
 
+async function migrationV0() {
+  const root = await makeProject('migration-v0', 'Migration v0')
+  const db = new DatabaseSync(join(root, '.novel/project.db'))
+  // A pre-schema database has only the settings table and the default
+  // user_version. Opening it must apply the complete migration chain.
+  db.exec('CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); PRAGMA user_version = 0;')
+  db.close()
+}
+
 async function broken() {
   const root = await makeProject('broken-project', 'Broken Project')
   await writeFile(join(root, 'chapters/001-broken.md'), chapter(1, '缺索引项目'))
@@ -88,6 +97,6 @@ async function longProject() {
 }
 
 await mkdir(outputRoot, { recursive: true })
-await tiny(); await conflict(); await imageHeavy(); await migrationV1(); await broken()
+await tiny(); await conflict(); await imageHeavy(); await migrationV0(); await migrationV1(); await broken()
 if (process.argv.includes('--long')) await longProject()
 console.log(`fixtures generated at ${outputRoot}${process.argv.includes('--long') ? ' (including long-cn)' : ''}`)

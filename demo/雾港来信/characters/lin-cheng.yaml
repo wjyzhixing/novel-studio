@@ -1,0 +1,9 @@
+id: ent_lin_cheng
+name: 林成
+aliases: [林师傅, 爸爸]
+role: missing-father
+goal: 在事故后保护一名未成年证人并保存原始录音
+fear: 真相公开后，证人会被再次找到
+secret: 他在失踪前把完整母带拆成两份，分别藏在不同地点
+relationships: 林岚是女儿，顾深是旧日合作者
+notes: 林岚的父亲，曾经营同一家修复店，故事开始时下落不明。

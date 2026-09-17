@@ -7,6 +7,25 @@ export type SelectionSnapshot = {
 export type PersistedSelectionRange = { from: number; to: number }
 export type PersistedSelectionMeta = { from?: number; to?: number; clear?: boolean }
 
+export type NativeSelectionState = { active: boolean; confirmed: boolean }
+
+export function selectionBelongsToChapter(snapshot: { relPath: string | null } | null, activeRelPath: string | null): boolean {
+  return Boolean(snapshot?.relPath && activeRelPath && snapshot.relPath === activeRelPath)
+}
+
+export function selectionDecorationNeedsUpdate(current: PersistedSelectionRange | null, next: PersistedSelectionRange): boolean {
+  return !current || current.from !== next.from || current.to !== next.to
+}
+
+/**
+ * A browser selection moving outside the editor is only a focus/visibility
+ * change. It must not erase the menu-confirmed selection; only the explicit
+ * clear action is allowed to do that.
+ */
+export function nativeSelectionState(current: NativeSelectionState, belongsToEditor: boolean): NativeSelectionState {
+  return { active: belongsToEditor, confirmed: current.confirmed }
+}
+
 type TextBlockLike = { isTextblock: boolean; textContent: string; nodeSize?: number }
 type DocumentLike = { content: { size: number }; descendants: (callback: (node: TextBlockLike, position: number) => void) => void }
 

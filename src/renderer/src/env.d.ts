@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 import type { CreateProjectInput, ProjectInfo, RecentProject } from '../../shared/ipc'
-import type { ChapterMeta, ChapterContent, SearchHit, ExportFormat } from '../../shared/chapter'
+import type { ChapterMeta, ChapterContent, SearchHit, ExportFormat, ExportOptions } from '../../shared/chapter'
 import type { Result } from '../../shared/result'
 import type { StoryApiContract } from '../../shared/story'
 import type { AiApiContract } from '../../shared/ai'
@@ -18,6 +18,12 @@ import type { RevisionApiContract } from '../../shared/revision'
 import type { CheckpointApiContract } from '../../shared/checkpoint'
 import type { SceneApiContract } from '../../shared/scene'
 import type { VolumeApiContract } from '../../shared/volume'
+import type { ExtensionApiContract } from '../../shared/extensions'
+import type { TelemetryApiContract, SettingsApiContract, SecretApiContract } from '../../shared/ipc'
+import type { CommunityWorkflowApiContract } from '../../shared/community-workflow'
+import type { UpdateApiContract } from '../../shared/update'
+import type { JobsApiContract } from '../../shared/jobs'
+import type { AuthoringApiContract, FullRevisionApiContract } from '../../shared/authoring'
 
 declare global {
   interface Window {
@@ -37,7 +43,10 @@ declare global {
         pickArchiveSave(): Promise<Result<string | null>>
         pickArchiveOpen(): Promise<Result<string | null>>
         checkIntegrity(): Promise<Result<import('../../shared/ipc').ProjectIntegrity>>
-        pickTextImport(): Promise<Result<string | null>>
+        pickTextImport(extensions?: readonly string[]): Promise<Result<string | null>>
+        pickExtensionPackage(): Promise<Result<string | null>>
+        pickCommunityWorkflowOpen(): Promise<Result<string | null>>
+        pickCommunityWorkflowSave(): Promise<Result<string | null>>
         pickImageImport(): Promise<Result<string | null>>
         pickExportSave(format: ExportFormat): Promise<Result<string | null>>
         pickDiagnosticsSave(): Promise<Result<string | null>>
@@ -53,10 +62,12 @@ declare global {
         readNote(relPath: string): Promise<Result<string>>
         saveNote(relPath: string, notes: string): Promise<Result<null>>
         importFile(sourcePath: string, title?: string): Promise<Result<ChapterMeta>>
-        exportAll(format: ExportFormat, destination: string): Promise<Result<{ destination: string; chapterCount: number }>>
+        exportAll(format: ExportFormat, destination: string, options?: ExportOptions): Promise<Result<{ destination: string; chapterCount: number }>>
       }
       scene: SceneApiContract
       volume: VolumeApiContract
+      authoring: AuthoringApiContract
+      fullRevision: FullRevisionApiContract
       search: {
         project(query: string): Promise<Result<SearchHit[]>>
       }
@@ -67,13 +78,19 @@ declare global {
       memory: MemoryApiContract
       canon: CanonApiContract
       workflowEditor: WorkflowApiContract
+      communityWorkflow: CommunityWorkflowApiContract
       workflowRuntime: { start(id: string, relPath: string, sceneId?: string): Promise<Result<string>>; run(id: string, relPath: string, sceneId?: string): Promise<Result<WorkflowRun>>; cancel(id: string): Promise<Result<null>>; retry(id: string, relPath: string): Promise<Result<string>>; resume(id: string, resumeInput?: unknown): Promise<Result<WorkflowRun>>; listRuns(recover?: boolean, summaries?: boolean): Promise<Result<WorkflowRun[]>>; onEvent(listener: (event: import('../../shared/runtime').WorkflowRuntimeEvent) => void): () => void }
-      jobs: { list(recover?: boolean): Promise<Result<JobRecord[]>> }
+      jobs: JobsApiContract
       image: ImageApiContract
       backup: BackupApiContract
       revision: RevisionApiContract
       checkpoint: CheckpointApiContract
       diagnostics: import('../../shared/diagnostics').DiagnosticsApiContract
+      extensions: ExtensionApiContract
+      telemetry: TelemetryApiContract
+      settings: SettingsApiContract
+      secret: SecretApiContract
+      update: UpdateApiContract
     }
     /** Menu bridge is unavailable when the renderer is opened directly in a browser. */
     novelMenu?: { onAction(callback: (action: string) => void): () => void }

@@ -17,6 +17,21 @@
 .health-migration>small{display:inline-flex;align-items:center;gap:5px;color:#7fba9d;font-size:10px}
 .health-migration>small::before{content:"";width:5px;height:5px;border-radius:50%;background:#5fd39a;box-shadow:0 0 0 2px #5fd39a22}
 .health-panel>footer{align-items:stretch!important;justify-content:space-between}
+.health-panel{border-color:var(--ns-color-border-strong);background:var(--ns-color-surface-raised);border-radius:var(--ns-radius-control)}
+.health-panel>header,.health-panel>footer{border-color:var(--ns-color-border)}
+.health-heading-icon{border-color:var(--ns-color-accent);background:var(--ns-color-accent-soft);color:var(--ns-color-accent)}
+.health-summary{background:var(--ns-color-surface)!important}
+.health-summary.healthy{border-color:var(--ns-color-success);color:var(--ns-color-success)}
+.health-summary.warning{border-color:var(--ns-color-warning);color:var(--ns-color-warning)}
+.health-summary.error{border-color:var(--ns-color-danger);color:var(--ns-color-danger)}
+.health-counts>div:hover{border-color:var(--ns-color-accent);background:var(--ns-color-accent-soft)}
+.health-migration{border-color:var(--ns-color-border);background:var(--ns-color-surface)}
+.health-migration>small{color:var(--ns-color-success)}
+.health-migration>small::before{background:var(--ns-color-success);box-shadow:0 0 0 2px color-mix(in srgb, var(--ns-color-success) 15%, transparent)}
+.health-panel>footer button{min-height:var(--ns-control-height);border-color:var(--ns-color-border-strong);background:var(--ns-color-surface);transition:background-color var(--ns-motion-fast),border-color var(--ns-motion-fast),color var(--ns-motion-fast),box-shadow var(--ns-motion-fast),transform 80ms ease}
+.health-panel>footer button:hover:not(:disabled){border-color:var(--ns-color-accent);background:var(--ns-color-accent-soft)}
+.health-panel>footer .health-primary{border-color:var(--ns-color-accent);background:var(--ns-color-accent)}
+.health-panel>footer .health-secondary{background:var(--ns-color-surface);color:var(--ns-color-text)}
 .health-actions{display:flex;align-items:center;gap:8px}
 .health-panel>footer button{height:32px;padding:0 11px;border:1px solid #3b3948;border-radius:6px;background:#1a1b23;color:#d0cddd;font-size:11px;cursor:pointer;transition:background-color .14s ease,border-color .14s ease,color .14s ease,box-shadow .14s ease,transform .08s ease}
 .health-panel>footer button:hover:not(:disabled){border-color:#6652a0;background:#292044;color:#fff;box-shadow:0 3px 12px #0004}
