@@ -40,6 +40,8 @@ describe('cross-platform packaging workflow contract', () => {
     expect(workflow).toContain('--verify-tag')
     expect(workflow).toContain('CHANGELOG.md')
     expect(workflow).toContain('for attempt in 1 2 3')
+    expect(workflow).toContain('node node_modules/electron/install.js')
+    expect(workflow).toContain("v1.0.0-retry*")
     expect(workflow).not.toContain('APPLE_ID')
   })
 })

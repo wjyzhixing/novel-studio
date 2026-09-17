@@ -37,6 +37,8 @@ jobs:
             sleep 10
           done
           exit 1
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
       - name: Build Windows installer
         run: pnpm dist:win:x64
       - name: Verify Windows installer metadata
@@ -77,6 +79,8 @@ jobs:
             sleep 10
           done
           exit 1
+      - name: Install Electron runtime
+        run: node node_modules/electron/install.js
       - name: Build macOS ARM64 installer
         run: pnpm dist:mac:arm64
       - name: Verify macOS installer metadata
@@ -111,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           release_tag="$GITHUB_REF_NAME"
-          if [[ "$release_tag" == "v1.0.0-retry" ]]; then
+          if [[ "$release_tag" == v1.0.0-retry* ]]; then
             release_tag="v1.0.0"
           fi
           if gh release view "$release_tag" >/dev/null 2>&1; then

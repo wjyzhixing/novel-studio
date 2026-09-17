@@ -7,7 +7,11 @@ describe('dependency security overrides', () => {
     const patchPath = packageJson.pnpm?.patchedDependencies?.['extract-zip@2.0.1']
     expect(patchPath).toBe('patches/extract-zip@2.0.1.patch')
     const patch = await readFile(new URL(`../${patchPath}`, import.meta.url), 'utf8')
-    expect(patch).toContain('Symlink entries are not supported')
-    expect(patch).toContain('-      await fs.symlink(link, dest)')
+    expect(patch).toContain('const resolvedLink = path.resolve(path.dirname(dest), link)')
+    expect(patch).toContain('path.isAbsolute(link)')
+    expect(patch).toContain('path.win32.isAbsolute(link)')
+    expect(patch).toContain('relativeLink.split(path.sep).includes(\'..\')')
+    expect(patch).toContain('       await fs.symlink(link, dest)')
+    expect(patch).not.toContain('Symlink entries are not supported')
   })
 })

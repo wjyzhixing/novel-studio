@@ -2,29 +2,26 @@ diff --git a/index.js b/index.js
 index 23384ea16bb848616886f356d8d69f94325535bf..e90682336480849d1e933808d633da84cb41f223 100644
 --- a/index.js
 +++ b/index.js
-@@ -110,6 +110,10 @@ class Extractor {
- 
-     const procMode = this.getExtractedMode(mode, isDir) & 0o777
- 
-+    if (symlink) {
-+      throw new Error(`Symlink entries are not supported: ${entry.fileName}`)
-+    }
-+
-     // always ensure folders are created
-     const destDir = isDir ? dest : path.dirname(dest)
- 
-@@ -124,13 +128,7 @@ class Extractor {
+@@ -124,13 +124,22 @@ class Extractor {
      debug('opening read stream', dest)
      const readStream = await promisify(this.zipfile.openReadStream.bind(this.zipfile))(entry)
  
--    if (symlink) {
--      const link = await getStream(readStream)
--      debug('creating symlink', link, dest)
--      await fs.symlink(link, dest)
--    } else {
--      await pipeline(readStream, createWriteStream(dest, { mode: procMode }))
--    }
-+    await pipeline(readStream, createWriteStream(dest, { mode: procMode }))
+     if (symlink) {
+       const link = await getStream(readStream)
++      const resolvedLink = path.resolve(path.dirname(dest), link)
++      const relativeLink = path.relative(this.opts.dir, resolvedLink)
++      const linkParts = link.split('/').concat(link.split(String.fromCharCode(92)))
++      const linkEscapesRoot = relativeLink.split(path.sep).includes('..') || relativeLink === '..'
++
++      if (path.isAbsolute(link) || path.posix.isAbsolute(link) || path.win32.isAbsolute(link) || linkParts.includes('..') || linkEscapesRoot) {
++        throw new Error(`Symlink target escapes extraction directory: ${entry.fileName} -> ${link}`)
++      }
++
+       debug('creating symlink', link, dest)
+       await fs.symlink(link, dest)
+     } else {
+       await pipeline(readStream, createWriteStream(dest, { mode: procMode }))
+     }
    }
  
    getExtractedMode (entryMode, isDir) {
