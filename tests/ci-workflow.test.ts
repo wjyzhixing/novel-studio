@@ -22,9 +22,11 @@ describe('continuous integration workflow contract', () => {
 })
 
 describe('cross-platform packaging workflow contract', () => {
-  it('builds unsigned Windows and macOS artifacts only on manual dispatch', async () => {
+  it('builds unsigned Windows and macOS artifacts on release tags and publishes them', async () => {
     const workflow = await readFile(new URL('../.github/workflows/package.yml', import.meta.url), 'utf8')
     expect(workflow).toContain('workflow_dispatch:')
+    expect(workflow).toContain('tags:')
+    expect(workflow).toContain('permissions:\n      contents: write')
     expect(workflow).toContain('runs-on: windows-latest')
     expect(workflow).toContain('runs-on: macos-latest')
     expect(workflow).toContain('pnpm dist:win:x64')
@@ -33,6 +35,10 @@ describe('cross-platform packaging workflow contract', () => {
     expect(workflow).toContain('pnpm verify:artifacts -- --platform win')
     expect(workflow).toContain('pnpm verify:artifacts -- --platform mac')
     expect(workflow).toContain('CSC_IDENTITY_AUTO_DISCOVERY: false')
+    expect(workflow).toContain('actions/download-artifact@v4')
+    expect(workflow).toContain('gh release create')
+    expect(workflow).toContain('--verify-tag')
+    expect(workflow).toContain('CHANGELOG.md')
     expect(workflow).not.toContain('APPLE_ID')
   })
 })

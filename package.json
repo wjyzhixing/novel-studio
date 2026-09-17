@@ -1,7 +1,7 @@
 {
   "name": "novel-studio",
   "productName": "Novel Studio",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "author": "Novel Studio",
   "description": "AI-native desktop novel writing IDE prototype",
