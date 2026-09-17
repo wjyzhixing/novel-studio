@@ -12,7 +12,7 @@ permissions:
 jobs:
   windows:
     name: Windows NSIS x64
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 30
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -29,7 +29,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            pnpm install --frozen-lockfile && exit 0
+            echo "Dependency install failed on attempt $attempt"
+            sleep 10
+          done
+          exit 1
       - name: Build Windows installer
         run: pnpm dist:win:x64
       - name: Verify Windows installer metadata
@@ -45,7 +52,7 @@ jobs:
 
   macos:
     name: macOS ARM64 DMG
-    runs-on: macos-latest
+    runs-on: macos-14
     timeout-minutes: 30
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -62,7 +69,14 @@ jobs:
           node-version: 22
           cache: pnpm
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        shell: bash
+        run: |
+          for attempt in 1 2 3; do
+            pnpm install --frozen-lockfile && exit 0
+            echo "Dependency install failed on attempt $attempt"
+            sleep 10
+          done
+          exit 1
       - name: Build macOS ARM64 installer
         run: pnpm dist:mac:arm64
       - name: Verify macOS installer metadata
@@ -96,11 +110,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            release-assets/*.exe \
-            release-assets/*.dmg \
-            release-assets/latest.yml \
-            release-assets/latest-mac.yml \
-            --title "$GITHUB_REF_NAME" \
-            --notes-file CHANGELOG.md \
-            --verify-tag
+          release_tag="$GITHUB_REF_NAME"
+          if [[ "$release_tag" == "v1.0.0-retry" ]]; then
+            release_tag="v1.0.0"
+          fi
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release upload "$release_tag" \
+              release-assets/*.exe \
+              release-assets/*.dmg \
+              release-assets/latest.yml \
+              release-assets/latest-mac.yml \
+              --clobber
+            gh release edit "$release_tag" \
+              --title "$release_tag" \
+              --notes-file CHANGELOG.md
+          else
+            gh release create "$release_tag" \
+              release-assets/*.exe \
+              release-assets/*.dmg \
+              release-assets/latest.yml \
+              release-assets/latest-mac.yml \
+              --title "$release_tag" \
+              --notes-file CHANGELOG.md \
+              --verify-tag
+          fi
